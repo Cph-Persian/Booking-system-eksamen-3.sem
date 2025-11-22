@@ -17,6 +17,8 @@
     "@mantine/hooks": "^8.3.8",
     "@mantine/modals": "^8.3.8",
     "@mantine/notifications": "^8.3.8",
+    "@supabase/supabase-js": "^2.83.0",
+    "@tabler/icons-react": "^3.35.0",
     "dayjs": "^1.11.19",
     "embla-carousel": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
