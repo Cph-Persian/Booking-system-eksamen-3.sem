@@ -1,7 +1,9 @@
-
+import Demo from './components/bookingModal/Demo';
 
 export default function Home() {
   return (
-    <h1>Hello World</h1>
+    <>
+      <Demo />
+    </>
   );
 }
