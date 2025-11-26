@@ -8,7 +8,7 @@ export function Logo(props: React.ComponentPropsWithoutRef<'div'>) {
           alt="EK Logo" 
           width={40} 
           height={10}
-          style={{ objectFit: 'contain' }}
+          style={{ objectFit: 'contain', borderRadius: '100%' }}
         />
       </div>
     );

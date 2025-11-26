@@ -4,6 +4,8 @@ import "./globals.css";
 import { NavbarNested } from "./components/NavbarNested";
 import { MantineProvider } from '@mantine/core';
 import '@mantine/core/styles.css';
+import { NavbarProvider } from './contexts/NavbarContext';
+import { NavbarContent } from './components/NavbarContent';
 
 
 const geistSans = Geist({
@@ -32,10 +34,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <MantineProvider>
-          <NavbarNested />
-          <div style={{ marginLeft: '300px' }}>
-            {children}
-          </div>
+          <NavbarProvider>
+            <NavbarNested />
+            <NavbarContent>{children}</NavbarContent>
+          </NavbarProvider>
         </MantineProvider>
       </body>
     </html>

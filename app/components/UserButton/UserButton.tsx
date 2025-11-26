@@ -9,8 +9,9 @@ export function UserButton() {
     <UnstyledButton className={classes.user}>
       <Group>
         <Avatar
-          src="https://i.pravatar.cc/150?img=12"
+          src="/img/frederik.png"
           radius="xl"
+          alt="Frederik"
         />
         <Box style={{ flex: 1 }}>
           <Text size="sm" fw={500}>
@@ -20,7 +21,7 @@ export function UserButton() {
             cph-ff@stud.ek.dk
           </Text>
         </Box>
-        <IconChevronRight style={{ width: 16, height: 16,}} stroke={1.5} />
+        <IconChevronRight style={{ width: 16, height: 16 }} stroke={1.5} />
       </Group>
     </UnstyledButton>
   );
