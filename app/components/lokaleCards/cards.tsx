@@ -1,5 +1,5 @@
-'use client'
-import { Card, Image, Text, Badge, Button, Group } from '@mantine/core';
+// components/lokaleCards/cards.tsx
+import { Card, Image, Text, Badge } from '@mantine/core';
 
 interface LokaleCardProps {
   title: string;
@@ -10,29 +10,23 @@ interface LokaleCardProps {
 }
 
 export default function LokaleCard({ title, status, statusColor, description, imageUrl }: LokaleCardProps) {
-  
   return (
-    <Card shadow="sm" padding="lg" radius="md" withBorder>
+    <Card shadow="sm" radius="md" withBorder>
       <Card.Section>
-        <Image
-          src={imageUrl}
-          height={160}
-          alt={title}
-        />
+        <Image src={imageUrl} height={160} alt={title} />
       </Card.Section>
 
-      <Group justify="space-between" mt="md" mb="xs">
-        <Text fw={500}>{title}</Text>
-        <Badge color={statusColor}>{status}</Badge>
-      </Group>
-
-      <Text size="sm" c="dimmed">
-        {description}
+      <Text fw={700} mt="sm">
+        {title}
       </Text>
 
-      <Button color="#043055" fullWidth mt="md" radius="md">
-        Book lokale
-      </Button>
+      <Badge color={statusColor} mt="xs">
+        {status}
+      </Badge>
+
+      <Text size="sm" mt="xs">
+        {description}
+      </Text>
     </Card>
   );
 }

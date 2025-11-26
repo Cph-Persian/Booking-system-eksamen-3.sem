@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import {
     IconCalendarStats,
     IconGauge,
     IconMenu2,
+    IconSearch,
     IconX,
   } from '@tabler/icons-react';
 import { Group, ScrollArea, Text, Button } from '@mantine/core';
@@ -11,16 +13,31 @@ import { LinksGroup } from './NavbarLinksGroup/NavbarLinksGroup';
 import { UserButton } from './UserButton/UserButton';
 import { Logo } from './Logo';
 import { useNavbar } from '../contexts/NavbarContext';
+import { BookingModal } from './bookingModal/Demo';
 import classes from './NavbarNested.module.css';
 
 const mockdata = [
   { label: 'Dashboard', icon: IconGauge, link: '/' },
   { label: 'Mine bookinger', icon: IconCalendarStats, link: '/myBookings'},
+  { label: 'Book lokale', icon: IconSearch, link: '#', isModal: true},
 ];
 
 export function NavbarNested() {
   const { isOpen, toggle } = useNavbar();
-  const links = mockdata.map((item) => <LinksGroup {...item} key={item.label} />);
+  const [modalOpened, setModalOpened] = useState(false);
+
+  const links = mockdata.map((item) => {
+    if (item.isModal) {
+      return (
+        <LinksGroup
+          key={item.label}
+          {...item}
+          onClick={() => setModalOpened(true)}
+        />
+      );
+    }
+    return <LinksGroup {...item} key={item.label} />;
+  });
 
   return (
     <>
@@ -68,6 +85,7 @@ export function NavbarNested() {
           <IconMenu2 size={20} />
         </Button>
       )}
+      <BookingModal opened={modalOpened} onClose={() => setModalOpened(false)} />
     </>
   );
 }
