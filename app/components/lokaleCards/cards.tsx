@@ -1,5 +1,5 @@
 // components/lokaleCards/cards.tsx
-import { Card, Image, Text, Badge } from '@mantine/core';
+import { Card, Image, Text, Badge, Button } from '@mantine/core';
 
 interface LokaleCardProps {
   title: string;
@@ -27,6 +27,8 @@ export default function LokaleCard({ title, status, statusColor, description, im
       <Text size="sm" mt="xs">
         {description}
       </Text>
+
+      <Button color="#043055" fullWidth mt="md" radius="md">Book lokale</Button>
     </Card>
   );
 }
