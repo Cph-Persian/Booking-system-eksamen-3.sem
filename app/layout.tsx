@@ -5,6 +5,7 @@ import { NavbarNested } from "./components/NavbarNested";
 import { MantineProvider } from '@mantine/core';
 import '@mantine/core/styles.css';
 import { NavbarProvider } from './contexts/NavbarContext';
+import { UserProvider } from './contexts/UserContext';
 import { NavbarContent } from './components/NavbarContent';
 
 
@@ -34,10 +35,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <MantineProvider>
-          <NavbarProvider>
-            <NavbarNested />
-            <NavbarContent>{children}</NavbarContent>
-          </NavbarProvider>
+          <UserProvider>
+            <NavbarProvider>
+              <NavbarNested />
+              <NavbarContent>{children}</NavbarContent>
+            </NavbarProvider>
+          </UserProvider>
         </MantineProvider>
       </body>
     </html>
