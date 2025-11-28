@@ -1,11 +1,13 @@
 // app/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { SimpleGrid, Text, Container, Alert, Loader, Center } from '@mantine/core';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { supabase } from './lib/supabaseClient';
 import LokaleCard from './components/lokaleCards/cards';
+import { useRoomAvailability } from './components/useRoomAvailability';
+import { QuickBookingModal } from './components/bookingModal/QuickBookingModal';
 
 type Room = {
   id: string;
@@ -16,70 +18,110 @@ type Room = {
   image_url: string | null;
   type?: string | null;
   capacity?: number | null;
+  features?: string | null;
+};
+
+type Booking = {
+  id: string;
+  room_id: string;
+  start_time: string;
+  end_time: string;
+  user_id?: string;
 };
 
 export default function Home() {
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [quickBookingModalOpened, setQuickBookingModalOpened] = useState(false);
+  const [selectedRoomForQuickBooking, setSelectedRoomForQuickBooking] = useState<Room | null>(null);
 
-  useEffect(() => {
-    const fetchRooms = async () => {
-      if (!supabase) {
-        setError('Supabase er ikke konfigureret. Tjek dine environment variabler i .env.local');
-        setLoading(false);
-        return;
+  // Grupper bookinger efter lokale ID (kun fremtidige bookinger)
+  const bookingsByRoom = useMemo(() => {
+    const grouped: { [roomId: string]: Booking[] } = {};
+    const now = new Date();
+
+    // Filtrer og grupper bookinger
+    bookings.forEach((booking) => {
+      const bookingEnd = new Date(booking.end_time);
+      
+      // Kun inkluder aktuelle eller fremtidige bookinger
+      if (bookingEnd >= now) {
+        if (!grouped[booking.room_id]) {
+          grouped[booking.room_id] = [];
+        }
+        grouped[booking.room_id].push(booking);
       }
+    });
 
+    // Sorter bookinger for hvert lokale efter start tid
+    Object.keys(grouped).forEach((roomId) => {
+      grouped[roomId].sort((a, b) => 
+        new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+      );
+    });
+
+    return grouped;
+  }, [bookings]);
+
+  // Brug hook'en til at beregne status
+  const roomsWithStatus = useRoomAvailability(rooms, bookingsByRoom);
+
+  // Hent data fra databasen
+  useEffect(() => {
+    if (!supabase) {
+      setError('Supabase er ikke konfigureret');
+      setLoading(false);
+      return;
+    }
+
+    const client = supabase;
+
+    const fetchData = async () => {
       try {
-        const { data, error: fetchError } = await supabase
-          .from('rooms')
-          .select('*')
-          .order('name', { ascending: true });
+        // Hent lokaler og bookinger
+        const [roomsResult, bookingsResult] = await Promise.all([
+          client.from('rooms').select('*').order('name'),
+          client.from('bookings').select('*').order('start_time'),
+        ]);
 
-        if (fetchError) {
-          console.error('Fejl ved hentning af rooms:', fetchError.message);
-          setError(`Fejl ved hentning af lokaler: ${fetchError.message}`);
-        } else if (data) {
-          setRooms(data as Room[]);
-          setError(null);
+        if (roomsResult.error) {
+          setError(`Fejl: ${roomsResult.error.message}`);
         } else {
-          setRooms([]);
+          setRooms((roomsResult.data as Room[]) || []);
+        }
+
+        if (bookingsResult.error) {
+          console.error('Fejl ved bookinger:', bookingsResult.error.message);
+          setBookings([]);
+        } else {
+          setBookings((bookingsResult.data as Booking[]) || []);
         }
       } catch (err) {
-        console.error('Uventet fejl:', err);
-        setError('En uventet fejl opstod ved hentning af lokaler');
+        setError('Uventet fejl ved hentning af data');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchRooms();
+    fetchData();
 
-    // Opsæt real-time subscription for at opdatere automatisk
-    if (supabase) {
-      const channel = supabase
-        .channel('rooms-changes')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'rooms'
-          },
-          () => {
-            // Genhent data når der er ændringer
-            fetchRooms();
-          }
-        )
-        .subscribe();
+    // Opsæt real-time opdateringer
+    const roomsChannel = client
+      .channel('rooms-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, fetchData)
+      .subscribe();
 
-      return () => {
-        if (supabase) {
-          supabase.removeChannel(channel);
-        }
-      };
-    }
+    const bookingsChannel = client
+      .channel('bookings-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, fetchData)
+      .subscribe();
+
+    return () => {
+      client.removeChannel(roomsChannel);
+      client.removeChannel(bookingsChannel);
+    };
   }, []);
 
   if (loading) {
@@ -113,20 +155,52 @@ export default function Home() {
     );
   }
 
+  const handleQuickBook = (room: Room) => {
+    setSelectedRoomForQuickBooking(room);
+    setQuickBookingModalOpened(true);
+  };
+
+  // Genhent bookinger når en ny booking er oprettet
+  const handleBookingSuccess = async () => {
+    if (!supabase) return;
+    const { data } = await supabase.from('bookings').select('*').order('start_time');
+    if (data) setBookings(data as Booking[]);
+  };
+
   return (
-    <Container size="xl" py="xl">
-      <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="lg">
-        {rooms.map((room) => (
-          <LokaleCard
-            key={room.id}
-            title={room.name}
-            status={room.status ?? 'Ukendt'}
-            statusColor={room.status_color ?? 'gray'}
-            description={room.description ?? ''}
-            imageUrl={room.image_url ?? ''}
-          />
-        ))}
-      </SimpleGrid>
-    </Container>
+    <>
+      <Container size="xl" py="xl">
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="lg">
+          {roomsWithStatus.map((room) => (
+            <LokaleCard
+              key={room.id}
+              title={room.name}
+              status={room.computedStatus}
+              statusColor={room.statusColor}
+              description={room.description ?? ''}
+              features={room.features ?? null}
+              infoText={room.infoText}
+              imageUrl={room.image_url ?? ''}
+              roomId={room.id}
+              onBookClick={() => handleQuickBook(room)}
+            />
+          ))}
+        </SimpleGrid>
+      </Container>
+
+      {selectedRoomForQuickBooking && (
+        <QuickBookingModal
+          opened={quickBookingModalOpened}
+          onClose={() => {
+            setQuickBookingModalOpened(false);
+            setSelectedRoomForQuickBooking(null);
+          }}
+          roomId={selectedRoomForQuickBooking.id}
+          roomName={selectedRoomForQuickBooking.name}
+          roomFeatures={selectedRoomForQuickBooking.features ?? null}
+          onBookingSuccess={handleBookingSuccess}
+        />
+      )}
+    </>
   );
 }
