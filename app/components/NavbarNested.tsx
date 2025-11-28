@@ -19,7 +19,7 @@ import classes from './NavbarNested.module.css';
 const mockdata = [
   { label: 'Dashboard', icon: IconGauge, link: '/' },
   { label: 'Mine bookinger', icon: IconCalendarStats, link: '/myBookings'},
-  { label: 'Book lokale', icon: IconSearch, link: '#', isModal: true},
+  { label: 'Book lokale forud', icon: IconSearch, link: '#', isModal: true},
 ];
 
 export function NavbarNested() {

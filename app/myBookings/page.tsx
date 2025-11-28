@@ -23,8 +23,8 @@ type Booking = {
 function matchesDate(booking: Booking, dateValue: Date | null): boolean {
   if (!dateValue) return true;
   
-  const monthNames = ['januar', 'februar', 'marts', 'april', 'maj', 'juni', 
-                      'juli', 'august', 'september', 'oktober', 'november', 'december'];
+  const monthNames = 
+  ['januar', 'februar', 'marts', 'april', 'maj', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'december'];
   const day = dateValue.getDate();
   const month = monthNames[dateValue.getMonth()];
   
