@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { NavbarNested } from "./components/NavbarNested";
 import { MantineProvider } from '@mantine/core';
 import '@mantine/core/styles.css';
-import { NavbarProvider } from './contexts/NavbarContext';
 import { UserProvider } from './contexts/UserContext';
-import { NavbarContent } from './components/NavbarContent';
+import { ProtectedLayout } from './components/ProtectedLayout';
 
 
 const geistSans = Geist({
@@ -30,16 +28,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="da">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <MantineProvider>
           <UserProvider>
-            <NavbarProvider>
-              <NavbarNested />
-              <NavbarContent>{children}</NavbarContent>
-            </NavbarProvider>
+            <ProtectedLayout>{children}</ProtectedLayout>
           </UserProvider>
         </MantineProvider>
       </body>

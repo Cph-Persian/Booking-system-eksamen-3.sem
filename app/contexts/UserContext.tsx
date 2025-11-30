@@ -20,55 +20,114 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // TODO: Når Supabase auth er implementeret, skal denne useEffect:
-  // 1. Lytte til auth state changes fra Supabase
-  // 2. Hente brugerdata fra Supabase (inkl. userType fra user_metadata eller en users tabel)
-  // 3. Opdatere user state
+  // Tjek om bruger er logget ind når komponenten loader
   useEffect(() => {
-    // Simulerer loading
-    setTimeout(() => {
-      // TODO: Erstat med Supabase auth check:
-      // const { data: { session } } = await supabase.auth.getSession();
-      // if (session?.user) {
-      //   // Hent brugerdata fra Supabase
-      //   const userData = await fetchUserData(session.user.id);
-      //   setUser(userData);
-      // }
-      
-      // Mock data for nu - fjern når Supabase auth er implementeret
-      setUser({
-        id: '1',
-        email: 'amy.horsefighter@stud.ek.dk',
-        name: 'Amy Horsefighter',
-        avatarUrl: '/img/frederik.png',
-        userType: 'studerende', // eller 'lærer'
-      });
+    if (!supabase) {
       setLoading(false);
-    }, 500);
+      return;
+    }
+
+    const checkUser = async () => {
+      try {
+        // Tjek om der er en aktiv session
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user) {
+          // Hent brugerdata fra Supabase
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+
+          if (userError) {
+            // Hvis der ikke er en users tabel, brug metadata fra auth
+            setUser({
+              id: session.user.id,
+              email: session.user.email || '',
+              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '',
+              avatarUrl: session.user.user_metadata?.avatar_url,
+              userType: session.user.user_metadata?.user_type || 'studerende',
+            });
+          } else if (userData) {
+            setUser({
+              id: userData.id,
+              email: userData.email,
+              name: userData.name,
+              avatarUrl: userData.avatar_url,
+              userType: userData.user_type,
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Fejl ved tjek af bruger:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkUser();
+
+    // Lyt til auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        checkUser();
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
-    // TODO: Implementer Supabase login:
-    // const { data, error } = await supabase.auth.signInWithPassword({
-    //   email,
-    //   password,
-    // });
-    // if (error) throw error;
-    // if (data.user) {
-    //   const userData = await fetchUserData(data.user.id);
-    //   setUser(userData);
-    // }
-    
-    // Mock login for nu
-    console.log('Login:', email, password);
+    if (!supabase) {
+      throw new Error('Supabase er ikke konfigureret');
+    }
+
+    // Login med Supabase
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) throw error;
+
+    if (data.user) {
+      // Hent brugerdata fra Supabase
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (userError) {
+        // Hvis der ikke er en users tabel, brug metadata fra auth
+        setUser({
+          id: data.user.id,
+          email: data.user.email || email,
+          name: data.user.user_metadata?.name || email.split('@')[0],
+          avatarUrl: data.user.user_metadata?.avatar_url,
+          userType: data.user.user_metadata?.user_type || 'studerende',
+        });
+      } else if (userData) {
+        setUser({
+          id: userData.id,
+          email: userData.email,
+          name: userData.name,
+          avatarUrl: userData.avatar_url,
+          userType: userData.user_type,
+        });
+      }
+    }
   };
 
   const logout = async () => {
-    // TODO: Implementer Supabase logout:
-    // await supabase.auth.signOut();
-    // setUser(null);
+    if (!supabase) return;
     
-    // Mock logout for nu
+    await supabase.auth.signOut();
     setUser(null);
   };
 

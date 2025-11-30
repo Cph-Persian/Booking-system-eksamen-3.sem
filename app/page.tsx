@@ -2,12 +2,14 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { SimpleGrid, Text, Container, Alert, Loader, Center } from '@mantine/core';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { supabase } from './lib/supabaseClient';
 import LokaleCard from './components/lokaleCards/cards';
 import { useRoomAvailability } from './components/useRoomAvailability';
 import { QuickBookingModal } from './components/bookingModal/QuickBookingModal';
+import { useUser } from './contexts/UserContext';
 
 type Room = {
   id: string;
@@ -30,12 +32,21 @@ type Booking = {
 };
 
 export default function Home() {
+  const router = useRouter();
+  const { user, loading: userLoading } = useUser();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [quickBookingModalOpened, setQuickBookingModalOpened] = useState(false);
   const [selectedRoomForQuickBooking, setSelectedRoomForQuickBooking] = useState<Room | null>(null);
+
+  // Redirect til login hvis bruger ikke er logget ind
+  useEffect(() => {
+    if (!userLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, userLoading, router]);
 
   // Grupper bookinger efter lokale ID (kun fremtidige bookinger)
   const bookingsByRoom = useMemo(() => {
@@ -124,7 +135,8 @@ export default function Home() {
     };
   }, []);
 
-  if (loading) {
+  // Vis loading hvis bruger data loader eller hvis lokaler loader
+  if (userLoading || loading) {
     return (
       <Container size="xl" py="xl">
         <Center>
@@ -133,6 +145,11 @@ export default function Home() {
         </Center>
       </Container>
     );
+  }
+
+  // Hvis ikke logget ind, vis intet (redirect sker i useEffect)
+  if (!user) {
+    return null;
   }
 
   if (error) {
