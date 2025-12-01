@@ -17,9 +17,9 @@ import { BookingModal } from './bookingModal/Demo';
 import classes from './NavbarNested.module.css';
 
 const mockdata = [
-  { label: 'Dashboard', icon: IconGauge, link: '/' },
+  { label: 'Ledige lokaler', icon: IconGauge, link: '/' },
   { label: 'Mine bookinger', icon: IconCalendarStats, link: '/myBookings'},
-  { label: 'Book lokale forud', icon: IconSearch, link: '#', isModal: true},
+  { label: 'Book lokale', icon: IconSearch, link: '#', isModal: true},
 ];
 
 export function NavbarNested() {
@@ -46,7 +46,7 @@ export function NavbarNested() {
           <Group gap="sm" justify="space-between">
             <Group gap="sm">
               <Logo style={{ width: 40 }} />
-              {isOpen && <Text fw={700} size="lg" c="#0C53ED">EK Lokaler</Text>}
+              {isOpen && <Text fw={700} size="lg" c="#0038A7">EK Lokaler</Text>}
             </Group>
             <Button
               variant="subtle"
