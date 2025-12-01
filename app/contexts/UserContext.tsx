@@ -38,14 +38,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Gem supabase i lokal variabel så TypeScript ved den ikke er null
+    const client = supabase;
+
     const checkUser = async () => {
       try {
         // Tjek om der er en aktiv session
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await client.auth.getSession();
         
         if (session?.user) {
           // Hent brugerdata fra Supabase
-          const { data: userData, error: userError } = await supabase
+          const { data: userData, error: userError } = await client
             .from('users')
             .select('*')
             .eq('id', session.user.id)
@@ -80,7 +83,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     checkUser();
 
     // Lyt til auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         checkUser();
       } else {
