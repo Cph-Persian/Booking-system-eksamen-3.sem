@@ -1,4 +1,16 @@
+// app/components/bookingModal/QuickBookingModal.tsx
 'use client';
+
+/**
+ * Hurtig Booking Modal
+ * 
+ * Denne modal giver mulighed for at booke et lokale hurtigt for i dag:
+ * - Vælg start- og sluttid (kun halve timer: 00 eller 30 minutter)
+ * - Maksimal varighed: 2 timer
+ * - Tjekker for overlappende bookinger
+ * - Viser lokale udstyr/features med ikoner
+ * - Opretter booking i Supabase database
+ */
 
 import { useState, useEffect, useMemo } from 'react';
 import { TimeInput } from '@mantine/dates';
@@ -82,12 +94,13 @@ export function QuickBookingModal({
   roomFeatures,
   onBookingSuccess 
 }: QuickBookingModalProps) {
-  const [startTime, setStartTime] = useState<string>('');
-  const [endTime, setEndTime] = useState<string>('');
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  // State (tilstand) - gemmer værdier der kan ændres
+  const [startTime, setStartTime] = useState<string>('');              // Start tid brugeren vælger (fx "12:30")
+  const [endTime, setEndTime] = useState<string>('');                 // Slut tid brugeren vælger (fx "14:00")
+  const [bookings, setBookings] = useState<Booking[]>([]);            // Eksisterende bookinger for i dag for dette lokale
+  const [submitting, setSubmitting] = useState(false);                 // Om booking request er i gang
+  const [error, setError] = useState<string | null>(null);             // Fejlbesked hvis noget går galt
+  const [success, setSuccess] = useState(false);                       // Om booking blev oprettet succesfuldt
 
   // Hent eksisterende bookinger for i dag
   useEffect(() => {
@@ -118,7 +131,13 @@ export function QuickBookingModal({
     fetchBookings();
   }, [opened, roomId]);
 
-  // Hjælpefunktion til at konvertere time string til Date
+  /**
+   * Konverterer en time string (fx "12:30") til et Date objekt
+   * 
+   * @param timeStr - Time string i format "HH:MM"
+   * @param baseDate - Datoen der skal bruges som base (fx i dag)
+   * @returns Date objekt eller null hvis time string er ugyldig
+   */
   const timeStringToDate = (timeStr: string, baseDate: Date): Date | null => {
     if (!timeStr) return null;
     const [hours, minutes] = timeStr.split(':').map(Number);
@@ -128,7 +147,18 @@ export function QuickBookingModal({
     return date;
   };
 
-  // Valider booking - tjek alle regler
+  /**
+   * Validerer booking inden den oprettes
+   * Tjekker alle regler:
+   * - Start og slut tid skal være valgt
+   * - Slut tid skal være efter start tid
+   * - Tider skal være i halve timer (00 eller 30 minutter)
+   * - Maksimal varighed er 2 timer
+   * - Kan ikke booke i fortiden
+   * - Ingen overlappende bookinger
+   * 
+   * @returns Fejlbesked hvis validation fejler, ellers null
+   */
   const validateBooking = (): string | null => {
     if (!startTime || !endTime) return 'Vælg både start og slut tid';
 
@@ -138,12 +168,17 @@ export function QuickBookingModal({
     
     if (!startDateTime || !endDateTime) return 'Ugyldig tid';
     if (endDateTime <= startDateTime) return 'Slut tid skal være efter start tid';
-    if (startTime.split(':')[1] !== '00' || endTime.split(':')[1] !== '00') {
-      return 'Bookinger skal være i hele timer (fx 09:00, 10:00)';
+
+    const startMinutes = Number(startTime.split(':')[1]);
+    const endMinutes = Number(endTime.split(':')[1]);
+    const validMinute = (m: number) => m === 0 || m === 30;
+
+    if (!validMinute(startMinutes) || !validMinute(endMinutes)) {
+      return 'Bookinger skal være i halve timer (fx 09:00, 09:30, 10:00)';
     }
 
-    const durationHours = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60 * 60);
-    if (durationHours > 3) return 'Maksimal booking-tid er 3 timer';
+    const durationMinutes = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60);
+    if (durationMinutes > 120) return 'Maksimal booking-tid er 2 timer';
     if (startDateTime < new Date()) return 'Du kan ikke booke i fortiden';
 
     // Tjek for overlappende bookinger
@@ -160,7 +195,10 @@ export function QuickBookingModal({
     return hasOverlap ? 'Lokalet er allerede booket i dette tidsrum' : null;
   };
 
-  // Opret booking
+  /**
+   * Håndterer når brugeren submitter booking formularen
+   * Validerer booking, opretter den i Supabase, og kalder onBookingSuccess callback
+   */
   const handleSubmit = async () => {
     setError(null);
     setSuccess(false);
@@ -220,21 +258,26 @@ export function QuickBookingModal({
     onClose();
   };
 
-  // Opdater endTime når startTime ændres (sæt til 1 time senere, maks 3 timer)
+  // Normaliser start-tid til halve timer når brugeren tabber ud af feltet
+  const handleStartTimeBlur = () => {
+    if (!startTime) return;
+    
+    const [rawHours, rawMinutes = '0'] = startTime.split(':');
+    const hoursNum = parseInt(rawHours, 10) || 0;
+    const minutesNum = parseInt(rawMinutes, 10) || 0;
+
+    // Normaliser til nærmeste halve time (00 eller 30)
+    const normalizedMinutesNum = minutesNum < 30 ? 0 : 30;
+    const normalizedStart = `${hoursNum.toString().padStart(2, '0')}:${normalizedMinutesNum
+      .toString()
+      .padStart(2, '0')}`;
+    setStartTime(normalizedStart);
+  };
+
+  // Opdater start-tid når brugeren skriver (ingen automatisk slut-tid)
   const handleStartTimeChange = (value: string) => {
     setStartTime(value);
-    if (value) {
-      // Normaliser til hele timer (sæt minutter til 00)
-      const [hours] = value.split(':');
-      const normalizedStart = `${hours}:00`;
-      setStartTime(normalizedStart);
-      
-      // Sæt slut tid til 1 time senere
-      const hoursNum = parseInt(hours, 10);
-      const newEndHour = (hoursNum + 1) % 24;
-      const newEndTime = `${newEndHour.toString().padStart(2, '0')}:00`;
-      setEndTime(newEndTime);
-    } else {
+    if (!value) {
       setEndTime('');
     }
   };
@@ -275,10 +318,11 @@ export function QuickBookingModal({
           <TimeInput
             value={startTime}
             onChange={(e) => handleStartTimeChange(e.currentTarget.value)}
+            onBlur={handleStartTimeBlur}
             placeholder="Vælg start tid"
           />
           <Text size="xs" c="dimmed" mt={4}>
-            Kun hele timer (fx 09:00, 10:00, 11:00)
+            Kun halve eller hele timer (fx 09:00, 09:30, 10:00)
           </Text>
         </div>
 
@@ -288,22 +332,23 @@ export function QuickBookingModal({
           </Text>
           <TimeInput
             value={endTime}
-            onChange={(e) => {
-              const value = e.currentTarget.value;
-              if (value) {
-                // Normaliser til hele timer (sæt minutter til 00)
-                const [hours] = value.split(':');
-                const normalized = `${hours}:00`;
-                setEndTime(normalized);
-              } else {
-                setEndTime('');
-              }
+            onChange={(e) => setEndTime(e.currentTarget.value)}
+            onBlur={() => {
+              if (!endTime) return;
+              const [rawHours, rawMinutes = '0'] = endTime.split(':');
+              const hoursNum = parseInt(rawHours, 10) || 0;
+              const minutesNum = parseInt(rawMinutes, 10) || 0;
+              const normalizedMinutesNum = minutesNum < 30 ? 0 : 30;
+              const normalized = `${hoursNum.toString().padStart(2, '0')}:${normalizedMinutesNum
+                .toString()
+                .padStart(2, '0')}`;
+              setEndTime(normalized);
             }}
             placeholder="Vælg slut tid"
             min={startTime || undefined}
           />
           <Text size="xs" c="dimmed" mt={4}>
-            Maksimal varighed: 3 timer
+            Maksimal varighed: 2 timer
           </Text>
         </div>
 

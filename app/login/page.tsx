@@ -1,4 +1,14 @@
+// app/login/page.tsx
 'use client';
+
+/**
+ * Login Side
+ * 
+ * Denne side giver brugeren mulighed for at:
+ * - Logge ind med email og password
+ * - Se velkomstbesked og EK branding
+ * - Blive automatisk redirectet hvis allerede logget ind
+ */
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -22,12 +32,15 @@ import classes from './AuthenticationImage.module.css';
 import Image from 'next/image';
 
 export default function LoginPage() {
+  // Hent router og login funktion fra UserContext
   const router = useRouter();
   const { login, user, loading: userLoading } = useUser();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  
+  // State (tilstand) - gemmer værdier der kan ændres
+  const [email, setEmail] = useState('');                    // Email brugeren indtaster
+  const [password, setPassword] = useState('');              // Password brugeren indtaster
+  const [error, setError] = useState<string | null>(null);   // Fejlbesked hvis login fejler
+  const [loading, setLoading] = useState(false);             // Om login request er i gang
 
   // Redirect hvis allerede logget ind
   useEffect(() => {
@@ -36,21 +49,28 @@ export default function LoginPage() {
     }
   }, [user, userLoading, router]);
 
+  /**
+   * Håndterer når brugeren submitter login formularen
+   * Prøver at logge ind med email og password, og redirecter ved succes
+   * 
+   * @param e - Form submit event
+   */
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+    e.preventDefault();              // Forhindrer standard form submit
+    setError(null);                 // Nulstil fejlbesked
+    setLoading(true);               // Vis loading state
 
     try {
       // Brug UserContext login funktion (den håndterer Supabase login)
       await login(email, password);
-      // Redirect til dashboard
+      // Redirect til hovedside ved succes
       router.push('/');
     } catch (err: any) {
       console.error('Login fejl:', err);
+      // Vis fejlbesked hvis login fejler
       setError(err.message || 'Forkert email eller password');
     } finally {
-      setLoading(false);
+      setLoading(false);            // Skjul loading state
     }
   };
 
