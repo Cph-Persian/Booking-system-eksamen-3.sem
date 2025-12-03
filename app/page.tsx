@@ -1,6 +1,16 @@
 // app/page.tsx
 'use client';
 
+/**
+ * Hovedside - Lokale Oversigt
+ * 
+ * Denne side viser alle tilgængelige lokaler og giver mulighed for at:
+ * - Se status for hvert lokale (Ledig, Optaget, Kommende)
+ * - Se information om lokaler (beskrivelse, udstyr, kapacitet)
+ * - Booke et lokale hurtigt via hurtig booking modal
+ * - Få real-time opdateringer når lokaler eller bookinger ændres
+ */
+
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { SimpleGrid, Text, Container, Alert, Loader, Center } from '@mantine/core';
@@ -32,14 +42,17 @@ type Booking = {
 };
 
 export default function Home() {
+  // Hent router og bruger information fra context
   const router = useRouter();
   const { user, loading: userLoading } = useUser();
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [quickBookingModalOpened, setQuickBookingModalOpened] = useState(false);
-  const [selectedRoomForQuickBooking, setSelectedRoomForQuickBooking] = useState<Room | null>(null);
+  
+  // State (tilstand) - gemmer værdier der kan ændres
+  const [rooms, setRooms] = useState<Room[]>([]);                    // Liste af alle lokaler fra databasen
+  const [bookings, setBookings] = useState<Booking[]>([]);            // Liste af alle bookinger fra databasen
+  const [loading, setLoading] = useState(true);                      // Om data stadig loader
+  const [error, setError] = useState<string | null>(null);            // Fejlbesked hvis noget går galt
+  const [quickBookingModalOpened, setQuickBookingModalOpened] = useState(false);  // Om hurtig booking modal er åben
+  const [selectedRoomForQuickBooking, setSelectedRoomForQuickBooking] = useState<Room | null>(null);  // Det lokale der er valgt til hurtig booking
 
   // Redirect til login hvis bruger ikke er logget ind
   useEffect(() => {
@@ -172,16 +185,25 @@ export default function Home() {
     );
   }
 
+  /**
+   * Håndterer når brugeren klikker "Book lokale" på et lokale kort
+   * Åbner hurtig booking modal med det valgte lokale
+   * 
+   * @param room - Lokalet der skal bookes
+   */
   const handleQuickBook = (room: Room) => {
-    setSelectedRoomForQuickBooking(room);
-    setQuickBookingModalOpened(true);
+    setSelectedRoomForQuickBooking(room);        // Gem det valgte lokale
+    setQuickBookingModalOpened(true);            // Åbn hurtig booking modal
   };
 
-  // Genhent bookinger når en ny booking er oprettet
+  /**
+   * Håndterer når en ny booking er oprettet
+   * Genhenter alle bookinger fra databasen for at opdatere listen
+   */
   const handleBookingSuccess = async () => {
     if (!supabase) return;
     const { data } = await supabase.from('bookings').select('*').order('start_time');
-    if (data) setBookings(data as Booking[]);
+    if (data) setBookings(data as Booking[]);   // Opdater bookings state med nye data
   };
 
   return (

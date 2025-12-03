@@ -6,11 +6,23 @@ import { UnstyledButton, Group, Avatar, Text, Box, Menu } from '@mantine/core';
 import { IconChevronRight, IconLogout, IconUser } from '@tabler/icons-react';
 import { useUser } from '../../contexts/UserContext';
 import classes from './UserButton.module.css';
+import louiseAvatar from '../../img/louise.png';
 
 export function UserButton() {
   const router = useRouter();
   const { user, logout } = useUser();
   const [opened, setOpened] = useState(false);
+
+  // Vælg profilbillede afhængigt af bruger
+  // - Hvis det er Louise → brug louise-billede
+  // - Ellers brug avatarUrl fra databasen eller standard Frederik-billede
+  const avatarSrc = (() => {
+    const name = user?.name?.toLowerCase() || '';
+    if (name.includes('louise')) {
+      return louiseAvatar.src;
+    }
+    return user?.avatarUrl || '/img/frederik.png';
+  })();
 
   const handleLogout = async () => {
     try {
@@ -33,7 +45,7 @@ export function UserButton() {
         <UnstyledButton className={classes.user}>
           <Group>
             <Avatar
-              src={user?.avatarUrl || '/img/frederik.png'}
+              src={avatarSrc}
               radius="xl"
               alt={user?.name || 'Bruger'}
             />

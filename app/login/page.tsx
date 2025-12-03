@@ -1,4 +1,14 @@
+// app/login/page.tsx
 'use client';
+
+/**
+ * Login Side
+ * 
+ * Denne side giver brugeren mulighed for at:
+ * - Logge ind med email og password
+ * - Se velkomstbesked og EK branding
+ * - Blive automatisk redirectet hvis allerede logget ind
+ */
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -20,14 +30,18 @@ import { IconAlertCircle, IconEye, IconEyeOff } from '@tabler/icons-react';
 import { useUser } from '../contexts/UserContext';
 import classes from './AuthenticationImage.module.css';
 import Image from 'next/image';
+import loginBg from '../img/login-baggrund.png';
 
 export default function LoginPage() {
+  // Hent router og login funktion fra UserContext
   const router = useRouter();
   const { login, user, loading: userLoading } = useUser();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  
+  // State (tilstand) - gemmer værdier der kan ændres
+  const [email, setEmail] = useState('');                    // Email brugeren indtaster
+  const [password, setPassword] = useState('');              // Password brugeren indtaster
+  const [error, setError] = useState<string | null>(null);   // Fejlbesked hvis login fejler
+  const [loading, setLoading] = useState(false);             // Om login request er i gang
 
   // Redirect hvis allerede logget ind
   useEffect(() => {
@@ -36,21 +50,28 @@ export default function LoginPage() {
     }
   }, [user, userLoading, router]);
 
+  /**
+   * Håndterer når brugeren submitter login formularen
+   * Prøver at logge ind med email og password, og redirecter ved succes
+   * 
+   * @param e - Form submit event
+   */
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+    e.preventDefault();              // Forhindrer standard form submit
+    setError(null);                 // Nulstil fejlbesked
+    setLoading(true);               // Vis loading state
 
     try {
       // Brug UserContext login funktion (den håndterer Supabase login)
       await login(email, password);
-      // Redirect til dashboard
+      // Redirect til hovedside ved succes
       router.push('/');
     } catch (err: any) {
       console.error('Login fejl:', err);
+      // Vis fejlbesked hvis login fejler
       setError(err.message || 'Forkert email eller password');
     } finally {
-      setLoading(false);
+      setLoading(false);            // Skjul loading state
     }
   };
 
@@ -71,15 +92,19 @@ export default function LoginPage() {
   return (
     <div className={classes.wrapper}>
       <div style={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
-        {/* Venstre side - Velkomst */}
+        {/* Venstre side - Velkomst med baggrundsbillede */}
         <Paper
           style={{
             flex: '1 1 50%',
-            background: '#ffffff',
+            position: 'relative',
             padding: '100px 120px',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'center',
+            color: 'white',
+            backgroundImage: `url(${loginBg.src})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
           }}
         >
           <Group gap="sm" mb="xl">
@@ -91,22 +116,22 @@ export default function LoginPage() {
               style={{ objectFit: 'contain', borderRadius: '100%' }}
             />
             <div>
-              <Text size="xs" c="dimmed" fw={500}>
+              <Text size="xs" c="#0038A7" fw={500}>
                 ERHVERVSAKADEMI
               </Text>
-              <Text size="xs" c="dimmed" fw={500}>
+              <Text size="xs" c="#0038A7" fw={500}>
                 KØBENHAVN
               </Text>
             </div>
           </Group>
 
-          <Text size="lg" c="dimmed" mb="xs">
+          <Text size="lg" c="#0038A7" mb="xs">
             Velkommen til
           </Text>
-          <Title order={1} size="3rem" fw={700} c="#0C53ED" mb="md">
+          <Title order={1} size="3rem" fw={700} c="#0038A7" mb="md">
             EK Lokaler
           </Title>
-          <Text size="md" c="dimmed" style={{ maxWidth: '400px' }}>
+          <Text size="md" c="#0038A7" style={{ maxWidth: '400px' }}>
             Book dit næste studielokale, møderum eller grupperum nemt og hurtigt. 
             Kræver login med din EK-mail.
           </Text>
@@ -126,7 +151,7 @@ export default function LoginPage() {
         >
           <Stack gap="xl" style={{ width: '100%', maxWidth: '450px' }}>
             <div style={{ marginBottom: '2rem' }}>
-              <Title order={1} size="2.5rem" fw={700} c="#0C53ED" mb="xl">
+              <Title order={1} size="2.5rem" fw={700} c="#0038A7" mb="xl">
                 EK Lokaler
               </Title>
               <Title order={2} size="1.5rem" fw={600} c="dark" mb="xl">

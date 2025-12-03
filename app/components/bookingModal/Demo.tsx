@@ -1,4 +1,18 @@
+// app/components/bookingModal/Demo.tsx
 'use client';
+
+/**
+ * Booking Modal - Fremtidige Bookinger
+ * 
+ * Denne modal giver mulighed for at booke et lokale frem i tiden:
+ * - Vælg dato (fremtidige datoer)
+ * - Vælg start- og sluttid (kun halve timer: 00 eller 30 minutter)
+ * - Maksimal varighed: 2 timer
+ * - Filtrerer ledige lokaler baseret på valgt dato og tid
+ * - Tjekker for overlappende bookinger
+ * - Viser lokale udstyr/features med ikoner
+ * - Opretter booking i Supabase database
+ */
 
 import { useState, useEffect, useMemo } from 'react';
 import { DatePickerInput, TimeInput } from '@mantine/dates';
@@ -40,18 +54,25 @@ interface BookingModalProps {
 }
 
 export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModalProps) {
-  const [date, setDate] = useState<Date | null>(null);
-  const [startTime, setStartTime] = useState<string>('');
-  const [endTime, setEndTime] = useState<string>('');
-  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  // State (tilstand) - gemmer værdier der kan ændres
+  const [date, setDate] = useState<Date | null>(null);                 // Den valgte dato
+  const [startTime, setStartTime] = useState<string>('');              // Start tid brugeren vælger (fx "12:30")
+  const [endTime, setEndTime] = useState<string>('');                 // Slut tid brugeren vælger (fx "14:00")
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);  // ID på det valgte lokale
+  const [rooms, setRooms] = useState<Room[]>([]);                     // Liste af alle lokaler fra databasen
+  const [bookings, setBookings] = useState<Booking[]>([]);           // Eksisterende bookinger for den valgte dato
+  const [loading, setLoading] = useState(false);                      // Om lokaler loader
+  const [submitting, setSubmitting] = useState(false);                 // Om booking request er i gang
+  const [error, setError] = useState<string | null>(null);             // Fejlbesked hvis noget går galt
+  const [success, setSuccess] = useState(false);                       // Om booking blev oprettet succesfuldt
 
-  // Hjælpefunktion til at konvertere time string til Date
+  /**
+   * Konverterer en time string (fx "12:30") til et Date objekt
+   * 
+   * @param timeStr - Time string i format "HH:MM"
+   * @param baseDate - Datoen der skal bruges som base
+   * @returns Date objekt eller null hvis time string er ugyldig
+   */
   const timeStringToDate = (timeStr: string, baseDate: Date): Date | null => {
     if (!timeStr) return null;
     const [hours, minutes] = timeStr.split(':').map(Number);
@@ -191,6 +212,9 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
   }, [rooms, bookings, date, startTime, endTime]);
 
   // Valider booking
+  // Regler:
+  // - Man kan booke i halve timer (00 eller 30 minutter)
+  // - Maksimal varighed er 2 timer
   const validateBooking = (): string | null => {
     if (!date) {
       return 'Vælg en dato';
@@ -221,20 +245,21 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
       return 'Slut tid skal være efter start tid';
     }
 
-    // Tjek at det er hele timer (minutter skal være 0)
+    // Tjek at det er halve timer (00 eller 30 minutter)
     const [startHours, startMinutes] = startTime.split(':').map(Number);
     const [endHours, endMinutes] = endTime.split(':').map(Number);
+    const validMinute = (m: number) => m === 0 || m === 30;
     
-    if (startMinutes !== 0 || endMinutes !== 0) {
-      return 'Bookinger skal være i hele timer (minutter skal være 00)';
+    if (!validMinute(startMinutes) || !validMinute(endMinutes)) {
+      return 'Bookinger skal være i halve timer (fx 09:00, 09:30, 10:00)';
     }
 
-    // Beregn varighed i timer
-    const durationHours = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60 * 60);
+    // Beregn varighed i minutter
+    const durationMinutes = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60);
     
-    // Tjek maks 3 timer
-    if (durationHours > 3) {
-      return 'Maksimal booking-tid er 3 timer';
+    // Tjek maks 2 timer
+    if (durationMinutes > 120) {
+      return 'Maksimal booking-tid er 2 timer';
     }
 
     // Tjek at tiden ikke er i fortiden (hvis det er i dag)
@@ -324,21 +349,26 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
     onClose();
   };
 
-  // Opdater endTime når startTime ændres (sæt til 1 time senere, maks 3 timer)
+  // Normaliser start-tid til halve timer når brugeren tabber ud af feltet
+  const handleStartTimeBlur = () => {
+    if (!startTime) return;
+    
+    const [rawHours, rawMinutes = '0'] = startTime.split(':');
+    const hoursNum = parseInt(rawHours, 10) || 0;
+    const minutesNum = parseInt(rawMinutes, 10) || 0;
+
+    // Normaliser til nærmeste halve time (00 eller 30)
+    const normalizedMinutesNum = minutesNum < 30 ? 0 : 30;
+    const normalizedStart = `${hoursNum.toString().padStart(2, '0')}:${normalizedMinutesNum
+      .toString()
+      .padStart(2, '0')}`;
+    setStartTime(normalizedStart);
+  };
+
+  // Opdater start-tid når brugeren skriver (ingen automatisk slut-tid)
   const handleStartTimeChange = (value: string) => {
     setStartTime(value);
-    if (value) {
-      // Normaliser til hele timer (sæt minutter til 00)
-      const [hours] = value.split(':');
-      const normalizedStart = `${hours}:00`;
-      setStartTime(normalizedStart);
-      
-      // Sæt slut tid til 1 time senere
-      const hoursNum = parseInt(hours, 10);
-      const newEndHour = (hoursNum + 1) % 24;
-      const newEndTime = `${newEndHour.toString().padStart(2, '0')}:00`;
-      setEndTime(newEndTime);
-    } else {
+    if (!value) {
       setEndTime('');
     }
   };
@@ -385,10 +415,11 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
           <TimeInput
             value={startTime}
             onChange={(e) => handleStartTimeChange(e.currentTarget.value)}
+            onBlur={handleStartTimeBlur}
             placeholder="Vælg start tid"
           />
           <Text size="xs" c="dimmed" mt={4}>
-            Kun hele timer (fx 09:00, 10:00, 11:00)
+            Kun halve eller hele timer (fx 09:00, 09:30, 10:00)
           </Text>
         </div>
 
@@ -398,22 +429,23 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
           </Text>
           <TimeInput
             value={endTime}
-            onChange={(e) => {
-              const value = e.currentTarget.value;
-              if (value) {
-                // Normaliser til hele timer (sæt minutter til 00)
-                const [hours] = value.split(':');
-                const normalized = `${hours}:00`;
-                setEndTime(normalized);
-              } else {
-                setEndTime('');
-              }
+            onChange={(e) => setEndTime(e.currentTarget.value)}
+            onBlur={() => {
+              if (!endTime) return;
+              const [rawHours, rawMinutes = '0'] = endTime.split(':');
+              const hoursNum = parseInt(rawHours, 10) || 0;
+              const minutesNum = parseInt(rawMinutes, 10) || 0;
+              const normalizedMinutesNum = minutesNum < 30 ? 0 : 30;
+              const normalized = `${hoursNum.toString().padStart(2, '0')}:${normalizedMinutesNum
+                .toString()
+                .padStart(2, '0')}`;
+              setEndTime(normalized);
             }}
             placeholder="Vælg slut tid"
             min={startTime || undefined}
           />
           <Text size="xs" c="dimmed" mt={4}>
-            Maksimal varighed: 3 timer
+            Maksimal varighed: 2 timer
           </Text>
         </div>
 

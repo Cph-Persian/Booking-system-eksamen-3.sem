@@ -1,4 +1,16 @@
-// components/lokaleCards/cards.tsx
+// app/components/lokaleCards/cards.tsx
+
+/**
+ * Lokale Card Komponent
+ * 
+ * Denne komponent viser information om et enkelt lokale:
+ * - Lokale navn og status (Ledig, Optaget, Kommende)
+ * - Beskrivelse af lokalet
+ * - Liste af udstyr/features med ikoner
+ * - Info tekst om næste booking eller ledighed
+ * - "Book lokale" knap til hurtig booking
+ */
+
 import { Card, Image, Text, Badge, Button, Group, Stack, Divider, Box } from '@mantine/core';
 import { 
   IconScreenShare, 
@@ -23,7 +35,12 @@ interface LokaleCardProps {
   onBookClick?: () => void;
 }
 
-// Mapping af feature navne til ikoner
+/**
+ * Finder det rigtige ikon baseret på feature navn
+ * 
+ * @param feature - Navnet på feature/udstyr (fx "Skærm", "Whiteboard")
+ * @returns React ikon komponent der matcher feature navnet
+ */
 const getFeatureIcon = (feature: string) => {
   const lowerFeature = feature.toLowerCase().trim();
   

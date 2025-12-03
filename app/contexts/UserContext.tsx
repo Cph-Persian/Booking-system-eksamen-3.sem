@@ -1,6 +1,16 @@
 // contexts/UserContext.tsx
 'use client';
 
+/**
+ * User Context
+ * 
+ * Denne context håndterer brugerautentificering og brugerdata:
+ * - Tjekker om bruger er logget ind ved app start
+ * - Giver login og logout funktionalitet
+ * - Synkroniserer brugerdata med Supabase
+ * - Lytter til auth state changes for real-time opdateringer
+ */
+
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types/user';
 import { supabase } from '../lib/supabaseClient';
@@ -17,8 +27,9 @@ interface UserContextType {
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  // State (tilstand) - gemmer værdier der kan ændres
+  const [user, setUser] = useState<User | null>(null);    // Den aktuelle bruger (eller null hvis ikke logget ind)
+  const [loading, setLoading] = useState(true);             // Om brugerdata stadig loader
 
   // Tjek om bruger er logget ind når komponenten loader
   useEffect(() => {
@@ -27,14 +38,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Gem supabase i lokal variabel så TypeScript ved den ikke er null
+    const client = supabase;
+
     const checkUser = async () => {
       try {
         // Tjek om der er en aktiv session
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await client.auth.getSession();
         
         if (session?.user) {
           // Hent brugerdata fra Supabase
-          const { data: userData, error: userError } = await supabase
+          const { data: userData, error: userError } = await client
             .from('users')
             .select('*')
             .eq('id', session.user.id)
@@ -69,7 +83,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     checkUser();
 
     // Lyt til auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         checkUser();
       } else {
@@ -82,12 +96,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  /**
+   * Logger brugeren ind med email og password
+   * Henter brugerdata fra Supabase og opdaterer user state
+   * 
+   * @param email - Brugerens email
+   * @param password - Brugerens password
+   * @throws Error hvis login fejler eller Supabase ikke er konfigureret
+   */
   const login = async (email: string, password: string) => {
     if (!supabase) {
       throw new Error('Supabase er ikke konfigureret');
     }
 
-    // Login med Supabase
+    // Login med Supabase authentication
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -96,7 +118,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
 
     if (data.user) {
-      // Hent brugerdata fra Supabase
+      // Hent brugerdata fra Supabase users tabel
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
@@ -113,6 +135,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           userType: data.user.user_metadata?.user_type || 'studerende',
         });
       } else if (userData) {
+        // Brug data fra users tabel hvis den findes
         setUser({
           id: userData.id,
           email: userData.email,
@@ -124,11 +147,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * Logger brugeren ud
+   * Fjerner session fra Supabase og nulstiller user state
+   */
   const logout = async () => {
     if (!supabase) return;
     
-    await supabase.auth.signOut();
-    setUser(null);
+    await supabase.auth.signOut();  // Log ud fra Supabase
+    setUser(null);                  // Nulstil user state
   };
 
   return (

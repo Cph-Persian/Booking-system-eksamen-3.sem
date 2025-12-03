@@ -1,4 +1,15 @@
-// lib/supabaseClient.ts
+// app/lib/supabaseClient.ts
+
+/**
+ * Supabase Client Konfiguration
+ * 
+ * Denne fil opretter og eksporterer Supabase klienten:
+ * - Læser environment variabler fra .env.local
+ * - Opretter Supabase klient hvis credentials er tilgængelige
+ * - Returnerer null hvis credentials mangler (med warning i console)
+ * - Bruges i hele applikationen til database queries og authentication
+ */
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
