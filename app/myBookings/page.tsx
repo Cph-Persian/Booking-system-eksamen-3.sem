@@ -12,10 +12,16 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { Container, Title, Paper, Text, Group, Stack, Avatar, TextInput, Loader, Center } from '@mantine/core';
-import { DatePickerInput } from '@mantine/dates';
 import { IconChevronDown, IconCalendar } from '@tabler/icons-react';
 import '@mantine/dates/styles.css';
+
+// Dynamic import af DatePickerInput for at undgå hydration fejl
+const DatePickerInput = dynamic(
+  () => import('@mantine/dates').then((mod) => mod.DatePickerInput),
+  { ssr: false }
+);
 import { useUser } from '../contexts/UserContext';
 import { CancelBookingModal } from '../components/myBookings/CancelBookingModal';
 import { EditBookingModal } from '../components/myBookings/EditBookingModal';
@@ -30,11 +36,22 @@ const MONTH_NAMES = ['januar', 'februar', 'marts', 'april', 'maj', 'juni',
 /**
  * Tjekker om en booking matcher den valgte dato
  */
-function matchesDate(booking: Booking, dateValue: Date | null): boolean {
+function matchesDate(booking: Booking, dateValue: Date | null | string): boolean {
   if (!dateValue) return true; // Vis alle hvis ingen dato valgt
   
-  const day = dateValue.getDate();
-  const month = MONTH_NAMES[dateValue.getMonth()];
+  // Konverter til Date objekt hvis det ikke allerede er det
+  let date: Date;
+  if (dateValue instanceof Date) {
+    date = dateValue;
+  } else if (typeof dateValue === 'string') {
+    date = new Date(dateValue);
+    if (isNaN(date.getTime())) return true; // Hvis ugyldig dato, vis alle
+  } else {
+    return true; // Hvis ukendt type, vis alle
+  }
+  
+  const day = date.getDate();
+  const month = MONTH_NAMES[date.getMonth()];
   
   // Tjek om booking datoen indeholder både dagen og måneden
   return booking.dato.includes(`${day}.`) && booking.dato.toLowerCase().includes(month);
@@ -102,11 +119,11 @@ export default function BookingPage() {
   const [cancelModalOpened, setCancelModalOpened] = useState(false);
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [isClient, setIsClient] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // Fix for hydration fejl med DatePicker
+  // Sikrer at komponenten kun renderes på klienten (fix hydration fejl)
   useEffect(() => {
-    setIsClient(true);
+    setIsMounted(true);
   }, []);
 
   /**
@@ -325,7 +342,7 @@ export default function BookingPage() {
 
       {/* Søgning og filtrering */}
       <Paper p="md" mb="md" bg="white" radius="md" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-        {isClient ? (
+        {isMounted ? (
           <DatePickerInput
             leftSection={<IconCalendar size={16} />}
             placeholder="Vælg dato"
@@ -333,7 +350,6 @@ export default function BookingPage() {
             onChange={(value) => setDateValue(value as Date | null)}
             rightSection={<IconChevronDown size={16} />}
             style={{ flex: 1, maxWidth: '200px' }}
-            suppressHydrationWarning
           />
         ) : (
           <TextInput
