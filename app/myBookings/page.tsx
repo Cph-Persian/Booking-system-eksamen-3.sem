@@ -4,14 +4,14 @@
 /**
  * Mine Bookinger Side
  * 
- * Denne side viser alle brugerens bookinger og giver mulighed for at:
+ * Viser alle brugerens bookinger fra Supabase og giver mulighed for:
  * - Søge efter bookinger
  * - Filtrere efter dato
  * - Redigere bookinger
  * - Aflyse bookinger
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Container, Title, Paper, Text, Group, Stack, Avatar, TextInput, Loader, Center } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { IconChevronDown, IconCalendar } from '@tabler/icons-react';
@@ -21,37 +21,20 @@ import { CancelBookingModal } from '../components/myBookings/CancelBookingModal'
 import { EditBookingModal } from '../components/myBookings/EditBookingModal';
 import { BookingRow } from '../components/myBookings/BookingRow';
 import { Booking } from '../components/myBookings/types';
+import { supabase } from '../lib/supabaseClient';
+
+// Månedsnavne på dansk (bruges til dato formatering)
+const MONTH_NAMES = ['januar', 'februar', 'marts', 'april', 'maj', 'juni', 
+                     'juli', 'august', 'september', 'oktober', 'november', 'december'];
 
 /**
  * Tjekker om en booking matcher den valgte dato
- * 
- * @param booking - Booking'en der skal tjekkes
- * @param dateValue - Den valgte dato (eller null hvis ingen dato valgt)
- * @returns true hvis booking matcher datoen, eller hvis ingen dato er valgt
  */
 function matchesDate(booking: Booking, dateValue: Date | null): boolean {
-  // Hvis ingen dato er valgt, vis alle bookinger
-  if (!dateValue) return true;
+  if (!dateValue) return true; // Vis alle hvis ingen dato valgt
   
-  // Sikrer at dateValue er et Date objekt
-  // Hvis det ikke er det, prøv at konvertere det
-  let date: Date;
-  if (dateValue instanceof Date) {
-    date = dateValue;
-  } else {
-    // Hvis det ikke er et Date objekt, prøv at konvertere det
-    date = new Date(dateValue);
-    // Hvis konvertering fejler, vis alle bookinger
-    if (isNaN(date.getTime())) return true;
-  }
-  
-  // Månedsnavne på dansk
-  const monthNames = 
-  ['januar', 'februar', 'marts', 'april', 'maj', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'december'];
-  
-  // Hent dag og måned fra den valgte dato
-  const day = date.getDate();                    // Dag (fx 25)
-  const month = monthNames[date.getMonth()];     // Måned (fx "december")
+  const day = dateValue.getDate();
+  const month = MONTH_NAMES[dateValue.getMonth()];
   
   // Tjek om booking datoen indeholder både dagen og måneden
   return booking.dato.includes(`${day}.`) && booking.dato.toLowerCase().includes(month);
@@ -59,116 +42,257 @@ function matchesDate(booking: Booking, dateValue: Date | null): boolean {
 
 /**
  * Tjekker om en booking matcher søgeteksten
- * 
- * @param booking - Booking'en der skal tjekkes
- * @param searchValue - Søgeteksten brugeren har indtastet
- * @returns true hvis booking matcher søgeteksten, eller hvis søgeteksten er tom
  */
 function matchesSearch(booking: Booking, searchValue: string): boolean {
-  // Hvis ingen søgetekst, vis alle bookinger
-  if (!searchValue) return true;
+  if (!searchValue) return true; // Vis alle hvis ingen søgetekst
   
-  // Konverter søgetekst til små bogstaver for sammenligning
   const search = searchValue.toLowerCase();
-  
-  // Tjek om søgeteksten findes i lokale, type eller udstyr
   return booking.lokale.toLowerCase().includes(search) ||
          booking.type.toLowerCase().includes(search) ||
          booking.udstyr.toLowerCase().includes(search);
 }
 
+/**
+ * Formaterer tid fra Date objekt til "HH:MM" format
+ */
+function formatTime(date: Date): string {
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+/**
+ * Konverterer en booking fra Supabase format til Booking type
+ */
+function convertSupabaseBookingToBooking(supabaseBooking: any): Booking {
+  const startDate = new Date(supabaseBooking.start_time);
+  const endDate = new Date(supabaseBooking.end_time);
+  
+  // Formater dato: "25. december, 2025"
+  const day = startDate.getDate();
+  const month = MONTH_NAMES[startDate.getMonth()];
+  const year = startDate.getFullYear();
+  const formattedDate = `${day}. ${month}, ${year}`;
+  
+  // Formater tid: "13:00-15:00"
+  const formattedTime = `${formatTime(startDate)}-${formatTime(endDate)}`;
+  
+  // Hent lokale information fra join
+  const room = supabaseBooking.rooms;
+  
+  return {
+    id: supabaseBooking.id,
+    lokale: room?.name || 'Ukendt lokale',
+    type: room?.type || 'Ukendt type',
+    dato: formattedDate,
+    tid: formattedTime,
+    udstyr: room?.features || 'Ingen',
+  };
+}
+
 export default function BookingPage() {
-  // Hent bruger information fra UserContext
   const { user, loading } = useUser();
   
-  // State (tilstand) - gemmer værdier der kan ændres
-  const [searchValue, setSearchValue] = useState('');              // Søgetekst brugeren indtaster
-  const [dateValue, setDateValue] = useState<Date | null>(null);  // Valgt dato fra date picker
-  const [cancelModalOpened, setCancelModalOpened] = useState(false);  // Om aflys modal er åben
-  const [editModalOpened, setEditModalOpened] = useState(false);     // Om rediger modal er åben
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);  // Den booking der er valgt til redigering/aflysning
-  const [isClient, setIsClient] = useState(false);                 // Om vi er på klienten (til hydration fix)
+  // State variabler
+  const [allBookings, setAllBookings] = useState<Booking[]>([]);
+  const [searchValue, setSearchValue] = useState('');
+  const [dateValue, setDateValue] = useState<Date | null>(null);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
+  const [cancelModalOpened, setCancelModalOpened] = useState(false);
+  const [editModalOpened, setEditModalOpened] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [isClient, setIsClient] = useState(false);
 
-  // Sikrer at vi kun renderer på klienten (fixer hydration fejl med DatePicker)
+  // Fix for hydration fejl med DatePicker
   useEffect(() => {
     setIsClient(true);
   }, []);
-  
-  // Liste af alle bookinger (normalt ville dette komme fra en database)
-  const [allBookings, setAllBookings] = useState<Booking[]>([
-    { id: '1', lokale: '3.5', type: 'Klasselokale', dato: '25. December, 2025', tid: '13:00-15:00', udstyr: 'Skærm' },
-    { id: '2', lokale: '3.9', type: 'Klasselokale', dato: '25. December, 2025', tid: '13:00-15:00', udstyr: 'Skærm' },
-    { id: '3', lokale: '3.12', type: 'Klasselokale', dato: '25. December, 2025', tid: '13:00-15:00', udstyr: 'Skærm' },
-    { id: '4', lokale: '310', type: 'Klasselokale', dato: '25. December, 2025', tid: '13:00-15:00', udstyr: 'Skærm' },
-    { id: '5', lokale: '2.1', type: 'Mødelokale', dato: '26. December, 2025', tid: '10:00-12:00', udstyr: 'Projektor' },
-    { id: '6', lokale: '4.3', type: 'Klasselokale', dato: '27. December, 2025', tid: '14:00-16:00', udstyr: 'Whiteboard' },
-    { id: '7', lokale: '1.5', type: 'Klasselokale', dato: '26. November, 2025', tid: '09:00-11:00', udstyr: 'Skærm' },
-  ]);
-  
+
+  /**
+   * Henter alle bookinger for den aktuelle bruger fra Supabase
+   */
+  const fetchBookings = useCallback(async () => {
+    if (!supabase || !user?.id) {
+      setBookingsLoading(false);
+      return;
+    }
+
+    setBookingsLoading(true);
+    setBookingsError(null);
+
+    try {
+      // Hent bookinger med join til rooms tabel, filtreret på user_id
+      const { data, error } = await supabase
+        .from('bookings')
+        .select(`
+          id,
+          room_id,
+          start_time,
+          end_time,
+          user_id,
+          rooms (id, name, type, features)
+        `)
+        .eq('user_id', user.id)
+        .order('start_time', { ascending: true });
+
+      if (error) throw error;
+
+      // Konverter til Booking type og opdater state
+      if (data) {
+        const convertedBookings = data.map(convertSupabaseBookingToBooking);
+        setAllBookings(convertedBookings);
+      }
+    } catch (err: any) {
+      console.error('Fejl ved hentning af bookinger:', err);
+      setBookingsError(err.message || 'Kunne ikke hente bookinger');
+      setAllBookings([]);
+    } finally {
+      setBookingsLoading(false);
+    }
+  }, [user?.id]);
+
+  // Hent bookinger når bruger er logget ind
+  useEffect(() => {
+    if (!loading && user?.id) {
+      fetchBookings();
+    } else if (!loading && !user) {
+      setAllBookings([]);
+      setBookingsLoading(false);
+    }
+  }, [user?.id, loading, fetchBookings]);
+
+  // Opsæt real-time opdateringer (opdaterer automatisk når bookinger ændres)
+  useEffect(() => {
+    if (!supabase || !user?.id) return;
+
+    const channel = supabase
+      .channel('bookings-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'bookings',
+        filter: `user_id=eq.${user.id}`,
+      }, () => {
+        fetchBookings(); // Opdater når der sker ændringer
+      })
+      .subscribe();
+
+    return () => {
+      if (supabase) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [user?.id, fetchBookings]);
+
   // Filtrer bookinger baseret på søgning og dato
-  // Kun bookinger der matcher både søgetekst OG dato vises
   const filteredBookings = allBookings.filter(booking => 
     matchesSearch(booking, searchValue) && matchesDate(booking, dateValue)
   );
 
   /**
-   * Håndterer når brugeren klikker "Aflys" på en booking
-   * Finder booking'en og åbner aflys modal'en
+   * Åbner aflys modal med den valgte booking
    */
   const handleCancelBooking = (bookingId: string) => {
     const booking = allBookings.find(b => b.id === bookingId);
     if (booking) {
-      setSelectedBooking(booking);        // Gem booking'en der skal aflyses
-      setCancelModalOpened(true);         // Åbn aflys modal
+      setSelectedBooking(booking);
+      setCancelModalOpened(true);
     }
   };
 
   /**
-   * Håndterer når brugeren klikker "Rediger" på en booking
-   * Finder booking'en og åbner rediger modal'en
+   * Åbner rediger modal med den valgte booking
    */
   const handleEditBooking = (bookingId: string) => {
     const booking = allBookings.find(b => b.id === bookingId);
     if (booking) {
-      setSelectedBooking(booking);       // Gem booking'en der skal redigeres
-      setEditModalOpened(true);           // Åbn rediger modal
+      setSelectedBooking(booking);
+      setEditModalOpened(true);
     }
   };
 
   /**
-   * Håndterer når brugeren bekræfter aflysning af en booking
-   * Fjerner booking'en fra listen og lukker modal'en
+   * Sletter booking fra Supabase når brugeren bekræfter aflysning
    */
-  const handleConfirmCancel = () => {
-    if (selectedBooking) {
-      // Fjern booking fra listen ved at filtrere den væk
+  const handleConfirmCancel = async () => {
+    if (!selectedBooking || !supabase) return;
+
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .delete()
+        .eq('id', selectedBooking.id);
+
+      if (error) throw error;
+
+      // Opdater listen lokalt
       setAllBookings(prevBookings => prevBookings.filter(b => b.id !== selectedBooking.id));
-      // Luk modal og nulstil selected booking
       setCancelModalOpened(false);
       setSelectedBooking(null);
+    } catch (err: any) {
+      console.error('Fejl ved aflysning af booking:', err);
+      setBookingsError(err.message || 'Kunne ikke aflyse booking');
     }
   };
 
   /**
-   * Håndterer når brugeren bekræfter redigering af en booking
-   * Opdaterer booking'en med de nye tider og lukker modal'en
+   * Opdaterer booking i Supabase med nye tider når brugeren bekræfter redigering
    */
-  const handleConfirmEdit = (bookingId: string, newStartTime: string, newEndTime: string) => {
-    // Opdater booking'en med nye tider
-    // Vi bruger map til at finde den rigtige booking og opdatere den
-    setAllBookings(prevBookings =>
-      prevBookings.map(booking =>
-        booking.id === bookingId
-          ? { ...booking, tid: `${newStartTime}-${newEndTime}` }  // Opdater tid med nye værdier
-          : booking                                                // Behold andre bookinger uændret
-      )
-    );
-    // Luk modal og nulstil selected booking
-    setEditModalOpened(false);
-    setSelectedBooking(null);
+  const handleConfirmEdit = async (bookingId: string, newStartTime: string, newEndTime: string) => {
+    if (!selectedBooking || !supabase) return;
+
+    try {
+      // Find original booking for at få datoen
+      const originalBooking = allBookings.find(b => b.id === bookingId);
+      if (!originalBooking) throw new Error('Booking ikke fundet');
+
+      // Parse dato fra booking tekst (fx "25. december, 2025")
+      const dateMatch = originalBooking.dato.match(/(\d+)\.\s*(\w+),\s*(\d+)/);
+      if (!dateMatch) throw new Error('Kunne ikke parse dato');
+
+      const day = parseInt(dateMatch[1]);
+      const monthIndex = MONTH_NAMES.findIndex(m => m.toLowerCase() === dateMatch[2].toLowerCase());
+      const year = parseInt(dateMatch[3]);
+
+      if (monthIndex === -1) throw new Error('Ugyldig måned');
+
+      // Opret Date objekter med nye tider
+      const [startHours, startMinutes] = newStartTime.split(':').map(Number);
+      const [endHours, endMinutes] = newEndTime.split(':').map(Number);
+      const newStartDateTime = new Date(year, monthIndex, day, startHours, startMinutes);
+      const newEndDateTime = new Date(year, monthIndex, day, endHours, endMinutes);
+
+      // Opdater i Supabase
+      const { error } = await supabase
+        .from('bookings')
+        .update({
+          start_time: newStartDateTime.toISOString(),
+          end_time: newEndDateTime.toISOString(),
+        })
+        .eq('id', bookingId);
+
+      if (error) throw error;
+
+      // Opdater listen lokalt
+      setAllBookings(prevBookings =>
+        prevBookings.map(booking =>
+          booking.id === bookingId
+            ? { ...booking, tid: `${newStartTime}-${newEndTime}` }
+            : booking
+        )
+      );
+
+      setEditModalOpened(false);
+      setSelectedBooking(null);
+    } catch (err: any) {
+      console.error('Fejl ved redigering af booking:', err);
+      setBookingsError(err.message || 'Kunne ikke redigere booking');
+    }
   };
 
-  if (loading) {
+  // Vis loading mens data hentes
+  if (loading || bookingsLoading) {
     return (
       <Container size="xl" py="xl">
         <Center><Loader size="lg" /></Center>
@@ -176,9 +300,20 @@ export default function BookingPage() {
     );
   }
 
+  // Vis fejl hvis der opstod en fejl
+  if (bookingsError) {
+    return (
+      <Container size="xl" py="xl">
+        <Paper p="md" withBorder>
+          <Text c="red">{bookingsError}</Text>
+        </Paper>
+      </Container>
+    );
+  }
+
   return (
     <Container size="xl" py="xl">
-      {/* Header */}
+      {/* Header med bruger info */}
       <Paper p="lg" mb="md" bg="gray.0" radius="md" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Title order={1} size="h1" fw={700} c="#043055">Mine bookinger</Title>
         <Group gap="sm">
@@ -195,11 +330,7 @@ export default function BookingPage() {
             leftSection={<IconCalendar size={16} />}
             placeholder="Vælg dato"
             value={dateValue}
-            onChange={(value) => {
-              // DatePickerInput returnerer Date | null, så vi kan bare sætte værdien direkte
-              // Men vi sikrer os at det er et Date objekt eller null
-              setDateValue(value as Date | null);
-            }}
+            onChange={(value) => setDateValue(value as Date | null)}
             rightSection={<IconChevronDown size={16} />}
             style={{ flex: 1, maxWidth: '200px' }}
             suppressHydrationWarning
@@ -253,7 +384,7 @@ export default function BookingPage() {
         </Stack>
       )}
 
-      {/* Modals */}
+      {/* Modals til aflysning og redigering */}
       <CancelBookingModal 
         opened={cancelModalOpened} 
         onClose={() => {
