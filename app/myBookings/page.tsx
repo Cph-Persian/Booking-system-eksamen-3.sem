@@ -22,6 +22,7 @@ import { EditBookingModal } from '../components/myBookings/EditBookingModal';
 import { BookingRow } from '../components/myBookings/BookingRow';
 import { Booking } from '../components/myBookings/types';
 import { supabase } from '../lib/supabaseClient';
+import louiseAvatar from '../img/louise.png';
 
 // Månedsnavne på dansk (bruges til dato formatering)
 const MONTH_NAMES = ['januar', 'februar', 'marts', 'april', 'maj', 'juni', 
@@ -311,13 +312,22 @@ export default function BookingPage() {
     );
   }
 
+  // Vælg profilbillede afhængigt af bruger (samme logik som i UserButton)
+  const headerAvatarSrc = (() => {
+    const name = user?.name?.toLowerCase() || '';
+    if (name.includes('louise')) {
+      return louiseAvatar.src;
+    }
+    return user?.avatarUrl || '/img/frederik.png';
+  })();
+
   return (
     <Container size="xl" py="xl">
       {/* Header med bruger info */}
       <Paper p="lg" mb="md" bg="gray.0" radius="md" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Title order={1} size="h1" fw={700} c="#043055">Mine bookinger</Title>
         <Group gap="sm">
-          <Avatar src={user?.avatarUrl || '/img/frederik.png'} radius="xl" size="md" alt={user?.name || 'Bruger'} />
+          <Avatar src={headerAvatarSrc} radius="xl" size="md" alt={user?.name || 'Bruger'} />
           <Text fw={700} size="md">{user?.name || 'Ikke logget ind'}</Text>
           <IconChevronDown size={16} />
         </Group>
