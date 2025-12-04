@@ -84,11 +84,14 @@ export default function Home() {
       return;
     }
 
+    // Gem supabase i lokal variabel så TypeScript ved den ikke er null
+    const supabaseClient = supabase;
+
     const fetchData = async () => {
       try {
         const [roomsResult, bookingsResult] = await Promise.all([
-          supabase.from('rooms').select('*').order('name'),
-          supabase.from('bookings').select('*').order('start_time'),
+          supabaseClient.from('rooms').select('*').order('name'),
+          supabaseClient.from('bookings').select('*').order('start_time'),
         ]);
 
         if (roomsResult.error) {
@@ -113,19 +116,19 @@ export default function Home() {
     fetchData();
 
     // Real-time opdateringer
-    const roomsChannel = supabase
+    const roomsChannel = supabaseClient
       .channel('rooms-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, fetchData)
       .subscribe();
 
-    const bookingsChannel = supabase
+    const bookingsChannel = supabaseClient
       .channel('bookings-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, fetchData)
       .subscribe();
 
     return () => {
-      supabase.removeChannel(roomsChannel);
-      supabase.removeChannel(bookingsChannel);
+      supabaseClient.removeChannel(roomsChannel);
+      supabaseClient.removeChannel(bookingsChannel);
     };
   }, []);
 
