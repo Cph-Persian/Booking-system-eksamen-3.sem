@@ -1,15 +1,5 @@
-// app/page.tsx
+// app/page.tsx - Hovedside med oversigt over alle lokaler
 'use client';
-
-/**
- * Hovedside - Lokale Oversigt
- * 
- * Denne side viser alle tilgængelige lokaler og giver mulighed for at:
- * - Se status for hvert lokale (Ledig, Optaget, Kommende)
- * - Se information om lokaler (beskrivelse, udstyr, kapacitet)
- * - Booke et lokale hurtigt via hurtig booking modal
- * - Få real-time opdateringer når lokaler eller bookinger ændres
- */
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -42,17 +32,15 @@ type Booking = {
 };
 
 export default function Home() {
-  // Hent router og bruger information fra context
   const router = useRouter();
   const { user, loading: userLoading } = useUser();
   
-  // State (tilstand) - gemmer værdier der kan ændres
-  const [rooms, setRooms] = useState<Room[]>([]);                    // Liste af alle lokaler fra databasen
-  const [bookings, setBookings] = useState<Booking[]>([]);            // Liste af alle bookinger fra databasen
-  const [loading, setLoading] = useState(true);                      // Om data stadig loader
-  const [error, setError] = useState<string | null>(null);            // Fejlbesked hvis noget går galt
-  const [quickBookingModalOpened, setQuickBookingModalOpened] = useState(false);  // Om hurtig booking modal er åben
-  const [selectedRoomForQuickBooking, setSelectedRoomForQuickBooking] = useState<Room | null>(null);  // Det lokale der er valgt til hurtig booking
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [quickBookingModalOpened, setQuickBookingModalOpened] = useState(false);
+  const [selectedRoomForQuickBooking, setSelectedRoomForQuickBooking] = useState<Room | null>(null);
 
   // Redirect til login hvis bruger ikke er logget ind
   useEffect(() => {
@@ -66,11 +54,8 @@ export default function Home() {
     const grouped: { [roomId: string]: Booking[] } = {};
     const now = new Date();
 
-    // Filtrer og grupper bookinger
     bookings.forEach((booking) => {
       const bookingEnd = new Date(booking.end_time);
-      
-      // Kun inkluder aktuelle eller fremtidige bookinger
       if (bookingEnd >= now) {
         if (!grouped[booking.room_id]) {
           grouped[booking.room_id] = [];
@@ -89,7 +74,6 @@ export default function Home() {
     return grouped;
   }, [bookings]);
 
-  // Brug hook'en til at beregne status
   const roomsWithStatus = useRoomAvailability(rooms, bookingsByRoom);
 
   // Hent data fra databasen
@@ -100,14 +84,11 @@ export default function Home() {
       return;
     }
 
-    const client = supabase;
-
     const fetchData = async () => {
       try {
-        // Hent lokaler og bookinger
         const [roomsResult, bookingsResult] = await Promise.all([
-          client.from('rooms').select('*').order('name'),
-          client.from('bookings').select('*').order('start_time'),
+          supabase.from('rooms').select('*').order('name'),
+          supabase.from('bookings').select('*').order('start_time'),
         ]);
 
         if (roomsResult.error) {
@@ -131,24 +112,34 @@ export default function Home() {
 
     fetchData();
 
-    // Opsæt real-time opdateringer
-    const roomsChannel = client
+    // Real-time opdateringer
+    const roomsChannel = supabase
       .channel('rooms-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, fetchData)
       .subscribe();
 
-    const bookingsChannel = client
+    const bookingsChannel = supabase
       .channel('bookings-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, fetchData)
       .subscribe();
 
     return () => {
-      client.removeChannel(roomsChannel);
-      client.removeChannel(bookingsChannel);
+      supabase.removeChannel(roomsChannel);
+      supabase.removeChannel(bookingsChannel);
     };
   }, []);
 
-  // Vis loading hvis bruger data loader eller hvis lokaler loader
+  const handleQuickBook = (room: Room) => {
+    setSelectedRoomForQuickBooking(room);
+    setQuickBookingModalOpened(true);
+  };
+
+  const handleBookingSuccess = async () => {
+    if (!supabase) return;
+    const { data } = await supabase.from('bookings').select('*').order('start_time');
+    if (data) setBookings(data as Booking[]);
+  };
+
   if (userLoading || loading) {
     return (
       <Container size="xl" py="xl">
@@ -160,7 +151,6 @@ export default function Home() {
     );
   }
 
-  // Hvis ikke logget ind, vis intet (redirect sker i useEffect)
   if (!user) {
     return null;
   }
@@ -184,27 +174,6 @@ export default function Home() {
       </Container>
     );
   }
-
-  /**
-   * Håndterer når brugeren klikker "Book lokale" på et lokale kort
-   * Åbner hurtig booking modal med det valgte lokale
-   * 
-   * @param room - Lokalet der skal bookes
-   */
-  const handleQuickBook = (room: Room) => {
-    setSelectedRoomForQuickBooking(room);        // Gem det valgte lokale
-    setQuickBookingModalOpened(true);            // Åbn hurtig booking modal
-  };
-
-  /**
-   * Håndterer når en ny booking er oprettet
-   * Genhenter alle bookinger fra databasen for at opdatere listen
-   */
-  const handleBookingSuccess = async () => {
-    if (!supabase) return;
-    const { data } = await supabase.from('bookings').select('*').order('start_time');
-    if (data) setBookings(data as Booking[]);   // Opdater bookings state med nye data
-  };
 
   return (
     <>

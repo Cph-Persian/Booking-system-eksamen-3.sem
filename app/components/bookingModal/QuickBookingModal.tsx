@@ -1,34 +1,14 @@
 // app/components/bookingModal/QuickBookingModal.tsx
 'use client';
 
-/**
- * Hurtig Booking Modal
- * 
- * Denne modal giver mulighed for at booke et lokale hurtigt for i dag:
- * - Vælg start- og sluttid (kun halve timer: 00 eller 30 minutter)
- * - Maksimal varighed: 2 timer
- * - Tjekker for overlappende bookinger
- * - Viser lokale udstyr/features med ikoner
- * - Opretter booking i Supabase database
- */
-
-import { useState, useEffect, useMemo } from 'react';
+// Hurtig booking modal - Book lokale for i dag
+import { useState, useEffect } from 'react';
 import { TimeInput } from '@mantine/dates';
 import { Button, Modal, Stack, Text, Alert, Group, Badge, Divider, Box } from '@mantine/core';
-import { 
-  IconAlertCircle, 
-  IconCheck,
-  IconScreenShare, 
-  IconDeviceDesktop, 
-  IconPlug, 
-  IconMicrophone, 
-  IconVolume,
-  IconPresentation,
-  IconWifi,
-  IconDeviceProjector
-} from '@tabler/icons-react';
+import { IconAlertCircle, IconCheck } from '@tabler/icons-react';
 import '@mantine/dates/styles.css';
 import { supabase } from '../../lib/supabaseClient';
+import { getFeatureIcon } from '../../utils/featureIcons';
 
 type Room = {
   id: string;
@@ -54,38 +34,6 @@ interface QuickBookingModalProps {
   onBookingSuccess?: () => void;
 }
 
-// Mapping af feature navne til ikoner
-const getFeatureIcon = (feature: string) => {
-  const lowerFeature = feature.toLowerCase().trim();
-  
-  if (lowerFeature.includes('skærm') || lowerFeature.includes('screen') || lowerFeature.includes('display')) {
-    return IconScreenShare;
-  }
-  if (lowerFeature.includes('whiteboard') || lowerFeature.includes('tavle')) {
-    return IconPresentation;
-  }
-  if (lowerFeature.includes('oplader') || lowerFeature.includes('charger') || lowerFeature.includes('forlænger')) {
-    return IconPlug;
-  }
-  if (lowerFeature.includes('mikrofon') || lowerFeature.includes('microphone')) {
-    return IconMicrophone;
-  }
-  if (lowerFeature.includes('højtaler') || lowerFeature.includes('speaker') || lowerFeature.includes('sound')) {
-    return IconVolume;
-  }
-  if (lowerFeature.includes('wifi') || lowerFeature.includes('internet')) {
-    return IconWifi;
-  }
-  if (lowerFeature.includes('projector') || lowerFeature.includes('projektor')) {
-    return IconDeviceProjector;
-  }
-  if (lowerFeature.includes('computer') || lowerFeature.includes('pc')) {
-    return IconDeviceDesktop;
-  }
-  
-  return IconPlug; // Default ikon
-};
-
 export function QuickBookingModal({ 
   opened, 
   onClose, 
@@ -94,13 +42,12 @@ export function QuickBookingModal({
   roomFeatures,
   onBookingSuccess 
 }: QuickBookingModalProps) {
-  // State (tilstand) - gemmer værdier der kan ændres
-  const [startTime, setStartTime] = useState<string>('');              // Start tid brugeren vælger (fx "12:30")
-  const [endTime, setEndTime] = useState<string>('');                 // Slut tid brugeren vælger (fx "14:00")
-  const [bookings, setBookings] = useState<Booking[]>([]);            // Eksisterende bookinger for i dag for dette lokale
-  const [submitting, setSubmitting] = useState(false);                 // Om booking request er i gang
-  const [error, setError] = useState<string | null>(null);             // Fejlbesked hvis noget går galt
-  const [success, setSuccess] = useState(false);                       // Om booking blev oprettet succesfuldt
+  const [startTime, setStartTime] = useState<string>('');
+  const [endTime, setEndTime] = useState<string>('');
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   // Hent eksisterende bookinger for i dag
   useEffect(() => {
@@ -131,13 +78,7 @@ export function QuickBookingModal({
     fetchBookings();
   }, [opened, roomId]);
 
-  /**
-   * Konverterer en time string (fx "12:30") til et Date objekt
-   * 
-   * @param timeStr - Time string i format "HH:MM"
-   * @param baseDate - Datoen der skal bruges som base (fx i dag)
-   * @returns Date objekt eller null hvis time string er ugyldig
-   */
+  // Konverterer time string til Date objekt
   const timeStringToDate = (timeStr: string, baseDate: Date): Date | null => {
     if (!timeStr) return null;
     const [hours, minutes] = timeStr.split(':').map(Number);
@@ -147,18 +88,7 @@ export function QuickBookingModal({
     return date;
   };
 
-  /**
-   * Validerer booking inden den oprettes
-   * Tjekker alle regler:
-   * - Start og slut tid skal være valgt
-   * - Slut tid skal være efter start tid
-   * - Tider skal være i halve timer (00 eller 30 minutter)
-   * - Maksimal varighed er 2 timer
-   * - Kan ikke booke i fortiden
-   * - Ingen overlappende bookinger
-   * 
-   * @returns Fejlbesked hvis validation fejler, ellers null
-   */
+  // Validerer booking - tjekker alle regler
   const validateBooking = (): string | null => {
     if (!startTime || !endTime) return 'Vælg både start og slut tid';
 
@@ -195,10 +125,7 @@ export function QuickBookingModal({
     return hasOverlap ? 'Lokalet er allerede booket i dette tidsrum' : null;
   };
 
-  /**
-   * Håndterer når brugeren submitter booking formularen
-   * Validerer booking, opretter den i Supabase, og kalder onBookingSuccess callback
-   */
+  // Opretter booking i Supabase
   const handleSubmit = async () => {
     setError(null);
     setSuccess(false);
@@ -258,7 +185,7 @@ export function QuickBookingModal({
     onClose();
   };
 
-  // Normaliser start-tid til halve timer når brugeren tabber ud af feltet
+  // Normaliserer tid til halve timer (00 eller 30)
   const handleStartTimeBlur = () => {
     if (!startTime) return;
     
@@ -274,7 +201,6 @@ export function QuickBookingModal({
     setStartTime(normalizedStart);
   };
 
-  // Opdater start-tid når brugeren skriver (ingen automatisk slut-tid)
   const handleStartTimeChange = (value: string) => {
     setStartTime(value);
     if (!value) {

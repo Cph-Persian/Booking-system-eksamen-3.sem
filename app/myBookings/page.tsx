@@ -1,15 +1,5 @@
-// app/myBookings/page.tsx
+// app/myBookings/page.tsx - Mine bookinger side
 'use client';
-
-/**
- * Mine Bookinger Side
- * 
- * Viser alle brugerens bookinger fra Supabase og giver mulighed for:
- * - Søge efter bookinger
- * - Filtrere efter dato
- * - Redigere bookinger
- * - Aflyse bookinger
- */
 
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
@@ -17,7 +7,7 @@ import { Container, Title, Paper, Text, Group, Stack, Avatar, TextInput, Loader,
 import { IconChevronDown, IconCalendar } from '@tabler/icons-react';
 import '@mantine/dates/styles.css';
 
-// Dynamic import af DatePickerInput for at undgå hydration fejl
+// Dynamic import for at undgå hydration fejl
 const DatePickerInput = dynamic(
   () => import('@mantine/dates').then((mod) => mod.DatePickerInput),
   { ssr: false }
@@ -121,6 +111,9 @@ export default function BookingPage() {
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editSuccess, setEditSuccess] = useState(false);
 
   // Sikrer at komponenten kun renderes på klienten (fix hydration fejl)
   useEffect(() => {
@@ -230,12 +223,11 @@ export default function BookingPage() {
     }
   };
 
-  /**
-   * Sletter booking fra Supabase når brugeren bekræfter aflysning
-   */
+  // Sletter booking fra Supabase
   const handleConfirmCancel = async () => {
     if (!selectedBooking || !supabase) return;
 
+    setCancelLoading(true);
     try {
       const { error } = await supabase
         .from('bookings')
@@ -244,28 +236,29 @@ export default function BookingPage() {
 
       if (error) throw error;
 
-      // Opdater listen lokalt
       setAllBookings(prevBookings => prevBookings.filter(b => b.id !== selectedBooking.id));
       setCancelModalOpened(false);
       setSelectedBooking(null);
     } catch (err: any) {
       console.error('Fejl ved aflysning af booking:', err);
       setBookingsError(err.message || 'Kunne ikke aflyse booking');
+    } finally {
+      setCancelLoading(false);
     }
   };
 
-  /**
-   * Opdaterer booking i Supabase med nye tider når brugeren bekræfter redigering
-   */
+  // Opdaterer booking i Supabase med nye tider
   const handleConfirmEdit = async (bookingId: string, newStartTime: string, newEndTime: string) => {
     if (!selectedBooking || !supabase) return;
 
+    setEditLoading(true);
+    setEditSuccess(false);
+    setBookingsError(null);
+
     try {
-      // Find original booking for at få datoen
       const originalBooking = allBookings.find(b => b.id === bookingId);
       if (!originalBooking) throw new Error('Booking ikke fundet');
 
-      // Parse dato fra booking tekst (fx "25. december, 2025")
       const dateMatch = originalBooking.dato.match(/(\d+)\.\s*(\w+),\s*(\d+)/);
       if (!dateMatch) throw new Error('Kunne ikke parse dato');
 
@@ -275,13 +268,11 @@ export default function BookingPage() {
 
       if (monthIndex === -1) throw new Error('Ugyldig måned');
 
-      // Opret Date objekter med nye tider
       const [startHours, startMinutes] = newStartTime.split(':').map(Number);
       const [endHours, endMinutes] = newEndTime.split(':').map(Number);
       const newStartDateTime = new Date(year, monthIndex, day, startHours, startMinutes);
       const newEndDateTime = new Date(year, monthIndex, day, endHours, endMinutes);
 
-      // Opdater i Supabase
       const { error } = await supabase
         .from('bookings')
         .update({
@@ -292,7 +283,6 @@ export default function BookingPage() {
 
       if (error) throw error;
 
-      // Opdater listen lokalt
       setAllBookings(prevBookings =>
         prevBookings.map(booking =>
           booking.id === bookingId
@@ -301,11 +291,17 @@ export default function BookingPage() {
         )
       );
 
-      setEditModalOpened(false);
-      setSelectedBooking(null);
+      setEditSuccess(true);
+      setTimeout(() => {
+        setEditModalOpened(false);
+        setSelectedBooking(null);
+        setEditSuccess(false);
+      }, 1500);
     } catch (err: any) {
       console.error('Fejl ved redigering af booking:', err);
       setBookingsError(err.message || 'Kunne ikke redigere booking');
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -342,11 +338,17 @@ export default function BookingPage() {
     <Container size="xl" py="xl">
       {/* Header med bruger info */}
       <Paper p="lg" mb="md" bg="gray.0" radius="md" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Title order={1} size="h1" fw={700} c="#043055">Mine bookinger</Title>
+        <div>
+          <Title order={1} size="h1" fw={700} c="#043055">Mine bookinger</Title>
+          <Text size="sm" c="dimmed" mt={4}>
+            {allBookings.length === 0 
+              ? 'Du har ingen bookinger' 
+              : `Du har ${allBookings.length} ${allBookings.length === 1 ? 'booking' : 'bookinger'}`}
+          </Text>
+        </div>
         <Group gap="sm">
           <Avatar src={headerAvatarSrc} radius="xl" size="md" alt={user?.name || 'Bruger'} />
           <Text fw={700} size="md">{user?.name || 'Ikke logget ind'}</Text>
-          <IconChevronDown size={16} />
         </Group>
       </Paper>
 
@@ -419,15 +421,20 @@ export default function BookingPage() {
         }}
         booking={selectedBooking}
         onConfirm={handleConfirmCancel}
+        loading={cancelLoading}
       />
       <EditBookingModal
         opened={editModalOpened}
         onClose={() => {
           setEditModalOpened(false);
           setSelectedBooking(null);
+          setEditSuccess(false);
         }}
         booking={selectedBooking}
         onConfirm={handleConfirmEdit}
+        loading={editLoading}
+        error={bookingsError}
+        success={editSuccess}
       />
     </Container>
   );

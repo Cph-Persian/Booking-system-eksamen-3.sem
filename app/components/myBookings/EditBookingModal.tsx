@@ -1,183 +1,225 @@
 // components/myBookings/EditBookingModal.tsx
 'use client';
 
-/**
- * EditBookingModal - Modal til at redigere tiderne på en booking
- * 
- * Denne komponent giver brugeren mulighed for at ændre start- og sluttid
- * på en eksisterende booking. Den viser nuværende tider og tillader redigering.
- */
-
+// Modal til at redigere tiderne på en booking
 import { useState, useEffect } from 'react';
-import { Modal, Text, Button, Stack, Group } from '@mantine/core';
+import { Modal, Text, Button, Stack, Group, Alert } from '@mantine/core';
 import { TimeInput } from '@mantine/dates';
-import { IconClock } from '@tabler/icons-react';
+import { IconClock, IconCheck, IconAlertCircle } from '@tabler/icons-react';
 import '@mantine/dates/styles.css';
 import { Booking } from './types';
 import { formatRoomInfo } from './utils';
 
-// Props (egenskaber) som komponenten modtager
 interface EditBookingModalProps {
-  opened: boolean;              // Om modal'en er åben eller lukket
-  onClose: () => void;          // Funktion der kaldes når modal lukkes
-  booking: Booking | null;      // Booking'en der skal redigeres (eller null hvis ingen)
-  onConfirm: (bookingId: string, newStartTime: string, newEndTime: string) => void;  // Kaldes med nye tider når bekræftet
+  opened: boolean;
+  onClose: () => void;
+  booking: Booking | null;
+  onConfirm: (bookingId: string, newStartTime: string, newEndTime: string) => void;
+  loading?: boolean;
+  error?: string | null;
+  success?: boolean;
 }
 
-export function EditBookingModal({ opened, onClose, booking, onConfirm }: EditBookingModalProps) {
-  // State (tilstand) - gemmer de tider brugeren indtaster
-  const [startTime, setStartTime] = useState<string>('');  // Start tid (fx "13:00")
-  const [endTime, setEndTime] = useState<string>('');        // Slut tid (fx "15:00")
+export function EditBookingModal({ 
+  opened, 
+  onClose, 
+  booking, 
+  onConfirm,
+  loading = false,
+  error = null,
+  success = false
+}: EditBookingModalProps) {
+  const [startTime, setStartTime] = useState<string>('');
+  const [endTime, setEndTime] = useState<string>('');
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  /**
-   * Når booking'en ændres, parse tiderne fra "13:00-15:00" format
-   * til separate start og slut tider og sæt dem i state
-   */
+  // Parse tider fra booking når den ændres
   useEffect(() => {
     if (booking?.tid) {
-      // Split "13:00-15:00" til ["13:00", "15:00"]
       const [start, end] = booking.tid.split('-');
-      setStartTime(start.trim());  // Fjern mellemrum og sæt start tid
-      setEndTime(end.trim());      // Fjern mellemrum og sæt slut tid
+      setStartTime(start.trim());
+      setEndTime(end.trim());
     }
   }, [booking]);
 
-  /**
-   * Når modal lukkes, nulstil tiderne
-   * Dette sikrer at næste gang modal åbnes, starter den med tomme felter
-   */
+  // Nulstil når modal lukkes
   useEffect(() => {
     if (!opened) {
       setStartTime('');
       setEndTime('');
+      setLocalError(null);
     }
   }, [opened]);
 
-  // Hvis der ikke er nogen booking, vis ikke noget
   if (!booking) return null;
 
-  /**
-   * Håndterer når brugeren klikker "Ja, rediger"
-   * Sender de nye tider videre til parent komponenten
-   */
-  const handleConfirm = () => {
-    if (startTime && endTime) {
-      onConfirm(booking.id, startTime, endTime);  // Send booking ID og nye tider videre
-      onClose();                                   // Luk modal
-    }
+  // Normaliserer tid til halve timer (00 eller 30)
+  const normalizeTime = (timeStr: string): string => {
+    if (!timeStr) return '';
+    const [rawHours, rawMinutes = '0'] = timeStr.split(':');
+    const hoursNum = parseInt(rawHours, 10) || 0;
+    const minutesNum = parseInt(rawMinutes, 10) || 0;
+    const normalizedMinutes = minutesNum < 30 ? 0 : 30;
+    return `${hoursNum.toString().padStart(2, '0')}:${normalizedMinutes.toString().padStart(2, '0')}`;
   };
 
-  /**
-   * Valider at tiderne er korrekte:
-   * - Både start og slut tid skal være udfyldt
-   * - Slut tid skal være efter start tid
-   */
-  const isValid = startTime && endTime && endTime > startTime;
+  // Validerer booking
+  const validateBooking = (): string | null => {
+    if (!startTime || !endTime) {
+      return 'Vælg både start og slut tid';
+    }
+
+    const [startHours, startMinutes] = startTime.split(':').map(Number);
+    const [endHours, endMinutes] = endTime.split(':').map(Number);
+
+    // Tjek halve timer
+    if (startMinutes !== 0 && startMinutes !== 30) {
+      return 'Start tid skal være i halve timer (fx 09:00, 09:30)';
+    }
+    if (endMinutes !== 0 && endMinutes !== 30) {
+      return 'Slut tid skal være i halve timer (fx 09:00, 09:30)';
+    }
+
+    // Opret Date objekter for at beregne varighed
+    const startTotalMinutes = startHours * 60 + startMinutes;
+    const endTotalMinutes = endHours * 60 + endMinutes;
+
+    if (endTotalMinutes <= startTotalMinutes) {
+      return 'Slut tid skal være efter start tid';
+    }
+
+    const durationMinutes = endTotalMinutes - startTotalMinutes;
+    if (durationMinutes > 120) {
+      return 'Maksimal booking-tid er 2 timer';
+    }
+
+    return null;
+  };
+
+  const handleConfirm = () => {
+    const validationError = validateBooking();
+    if (validationError) {
+      setLocalError(validationError);
+      return;
+    }
+
+    setLocalError(null);
+    onConfirm(booking.id, startTime, endTime);
+  };
+
+  const displayError = error || localError;
+  const isValid = startTime && endTime && !validateBooking();
 
   return (
     <Modal
-      opened={opened}                    // Kontrollerer om modal er åben
-      onClose={onClose}                  // Kaldes når bruger lukker modal
-      centered                            // Centrer modal på skærmen
-      withCloseButton                     // Vis X knap i øverste højre hjørne
-      closeButtonProps={{ 'aria-label': 'Luk' }}  // Accessibility label
-      radius="md"                        // Afrundede hjørner
-      size="md"                          // Medium størrelse
-      title={null}                       // Ingen titel i header
+      opened={opened}
+      onClose={onClose}
+      centered
+      withCloseButton
+      closeButtonProps={{ 'aria-label': 'Luk' }}
+      radius="md"
+      size="md"
+      title={null}
     >
       <Stack gap="lg" p="lg">
-        {/* Titel */}
         <Text size="xl" fw={700} style={{ fontSize: '24px' }}>
           Rediger booking
         </Text>
-        
-        {/* Lokale info */}
+
+        {success && (
+          <Alert icon={<IconCheck size={16} />} title="Booking opdateret!" color="green">
+            Tiderne er nu opdateret.
+          </Alert>
+        )}
+
+        {displayError && (
+          <Alert icon={<IconAlertCircle size={16} />} title="Fejl" color="red">
+            {displayError}
+          </Alert>
+        )}
+
         <Text size="sm" c="dark">
           {formatRoomInfo(booking)}
         </Text>
 
-        {/* Input felter for tider */}
         <Stack gap="md">
-          {/* Start tid input */}
           <div>
             <Text size="sm" fw={500} mb={5}>
-              Start
-            </Text>
-            <Text size="xs" c="dimmed" mb={5}>
-              Starttid for lokale
+              Start tid <Text component="span" c="red">*</Text>
             </Text>
             <TimeInput
-              value={startTime}          // Værdien der vises i input feltet
+              value={startTime}
               onChange={(e) => {
-                // Når brugeren ændrer tiden, normaliser til hele timer (fx "13:00")
                 const value = e.currentTarget.value;
                 if (value) {
-                  const [hours] = value.split(':');  // Tag kun timer (fx "13" fra "13:30")
-                  setStartTime(`${hours}:00`);        // Sæt til hele timer (fx "13:00")
+                  setStartTime(normalizeTime(value));
                 } else {
-                  setStartTime('');                    // Hvis tom, nulstil
+                  setStartTime('');
                 }
               }}
-              leftSection={<IconClock size={16} />}  // Klokke ikon til venstre
+              onBlur={() => {
+                if (startTime) {
+                  setStartTime(normalizeTime(startTime));
+                }
+              }}
+              leftSection={<IconClock size={16} />}
               placeholder="Vælg start tid"
             />
+            <Text size="xs" c="dimmed" mt={4}>
+              Kun halve eller hele timer (fx 09:00, 09:30)
+            </Text>
           </div>
 
-          {/* Slut tid input */}
           <div>
             <Text size="sm" fw={500} mb={5}>
-              Slut
-            </Text>
-            <Text size="xs" c="dimmed" mb={5}>
-              Sluttid for lokale
+              Slut tid <Text component="span" c="red">*</Text>
             </Text>
             <TimeInput
-              value={endTime}            // Værdien der vises i input feltet
+              value={endTime}
               onChange={(e) => {
-                // Når brugeren ændrer tiden, normaliser til hele timer
                 const value = e.currentTarget.value;
                 if (value) {
-                  const [hours] = value.split(':');
-                  setEndTime(`${hours}:00`);
+                  setEndTime(normalizeTime(value));
                 } else {
                   setEndTime('');
                 }
               }}
-              leftSection={<IconClock size={16} />}  // Klokke ikon til venstre
+              onBlur={() => {
+                if (endTime) {
+                  setEndTime(normalizeTime(endTime));
+                }
+              }}
+              leftSection={<IconClock size={16} />}
               placeholder="Vælg slut tid"
             />
-            {/* Advarsel om maksimal tid */}
-            <Text size="xs" c="red" mt={4}>
-              Lokalet kan bookes til kl.18
+            <Text size="xs" c="dimmed" mt={4}>
+              Maksimal varighed: 2 timer
             </Text>
           </div>
         </Stack>
 
-        {/* Knapper */}
         <Group gap="md" mt="md">
-          {/* "Nej, gå tilbage" knap - lukker modal uden at gemme ændringer */}
           <Button
-            color="#043055"              // Mørkeblå farve
-            style={{ flex: 1 }}          // Tag lige meget plads som den anden knap
+            color="#043055"
+            style={{ flex: 1 }}
             size="md"
-            onClick={onClose}            // Luk modal når klikket
+            onClick={onClose}
+            disabled={loading}
           >
             Nej, gå tilbage
           </Button>
-          
-          {/* "Ja, rediger" knap - gemmer ændringerne */}
           <Button
-            color="#228BE6"              // Lysblå farve
-            style={{ flex: 1 }}          // Tag lige meget plads som den anden knap
+            color="#228BE6"
+            style={{ flex: 1 }}
             size="md"
-            onClick={handleConfirm}      // Bekræft redigering når klikket
-            disabled={!isValid}          // Deaktiver hvis tiderne ikke er gyldige
+            onClick={handleConfirm}
+            disabled={!isValid || loading}
+            loading={loading}
           >
-            Ja, rediger
+            {loading ? 'Gemmer...' : 'Ja, rediger'}
           </Button>
         </Group>
       </Stack>
     </Modal>
   );
 }
-

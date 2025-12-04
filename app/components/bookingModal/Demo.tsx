@@ -1,36 +1,14 @@
 // app/components/bookingModal/Demo.tsx
 'use client';
 
-/**
- * Booking Modal - Fremtidige Bookinger
- * 
- * Denne modal giver mulighed for at booke et lokale frem i tiden:
- * - Vælg dato (fremtidige datoer)
- * - Vælg start- og sluttid (kun halve timer: 00 eller 30 minutter)
- * - Maksimal varighed: 2 timer
- * - Filtrerer ledige lokaler baseret på valgt dato og tid
- * - Tjekker for overlappende bookinger
- * - Viser lokale udstyr/features med ikoner
- * - Opretter booking i Supabase database
- */
-
+// Booking modal - Book lokale frem i tiden
 import { useState, useEffect, useMemo } from 'react';
 import { DatePickerInput, TimeInput } from '@mantine/dates';
 import { Button, Modal, Stack, Text, Select, Alert, Loader, Center, Group, Badge, Divider, Box } from '@mantine/core';
-import { 
-  IconAlertCircle, 
-  IconCheck,
-  IconScreenShare, 
-  IconDeviceDesktop, 
-  IconPlug, 
-  IconMicrophone, 
-  IconVolume,
-  IconPresentation,
-  IconWifi,
-  IconDeviceProjector
-} from '@tabler/icons-react';
+import { IconAlertCircle, IconCheck } from '@tabler/icons-react';
 import '@mantine/dates/styles.css';
 import { supabase } from '../../lib/supabaseClient';
+import { getFeatureIcon } from '../../utils/featureIcons';
 
 type Room = {
   id: string;
@@ -54,25 +32,18 @@ interface BookingModalProps {
 }
 
 export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModalProps) {
-  // State (tilstand) - gemmer værdier der kan ændres
-  const [date, setDate] = useState<Date | null>(null);                 // Den valgte dato
-  const [startTime, setStartTime] = useState<string>('');              // Start tid brugeren vælger (fx "12:30")
-  const [endTime, setEndTime] = useState<string>('');                 // Slut tid brugeren vælger (fx "14:00")
-  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);  // ID på det valgte lokale
-  const [rooms, setRooms] = useState<Room[]>([]);                     // Liste af alle lokaler fra databasen
-  const [bookings, setBookings] = useState<Booking[]>([]);           // Eksisterende bookinger for den valgte dato
-  const [loading, setLoading] = useState(false);                      // Om lokaler loader
-  const [submitting, setSubmitting] = useState(false);                 // Om booking request er i gang
-  const [error, setError] = useState<string | null>(null);             // Fejlbesked hvis noget går galt
-  const [success, setSuccess] = useState(false);                       // Om booking blev oprettet succesfuldt
+  const [date, setDate] = useState<Date | null>(null);
+  const [startTime, setStartTime] = useState<string>('');
+  const [endTime, setEndTime] = useState<string>('');
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
-  /**
-   * Konverterer en time string (fx "12:30") til et Date objekt
-   * 
-   * @param timeStr - Time string i format "HH:MM"
-   * @param baseDate - Datoen der skal bruges som base
-   * @returns Date objekt eller null hvis time string er ugyldig
-   */
+  // Konverterer time string til Date objekt
   const timeStringToDate = (timeStr: string, baseDate: Date): Date | null => {
     if (!timeStr) return null;
     const [hours, minutes] = timeStr.split(':').map(Number);
@@ -80,38 +51,6 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
     const date = new Date(baseDate);
     date.setHours(hours, minutes, 0, 0);
     return date;
-  };
-
-  // Mapping af feature navne til ikoner (samme som i LokaleCard)
-  const getFeatureIcon = (feature: string) => {
-    const lowerFeature = feature.toLowerCase().trim();
-    
-    if (lowerFeature.includes('skærm') || lowerFeature.includes('screen') || lowerFeature.includes('display')) {
-      return IconScreenShare;
-    }
-    if (lowerFeature.includes('whiteboard') || lowerFeature.includes('tavle')) {
-      return IconPresentation;
-    }
-    if (lowerFeature.includes('oplader') || lowerFeature.includes('charger') || lowerFeature.includes('forlænger')) {
-      return IconPlug;
-    }
-    if (lowerFeature.includes('mikrofon') || lowerFeature.includes('microphone')) {
-      return IconMicrophone;
-    }
-    if (lowerFeature.includes('højtaler') || lowerFeature.includes('speaker') || lowerFeature.includes('sound')) {
-      return IconVolume;
-    }
-    if (lowerFeature.includes('wifi') || lowerFeature.includes('internet')) {
-      return IconWifi;
-    }
-    if (lowerFeature.includes('projector') || lowerFeature.includes('projektor')) {
-      return IconDeviceProjector;
-    }
-    if (lowerFeature.includes('computer') || lowerFeature.includes('pc')) {
-      return IconDeviceDesktop;
-    }
-    
-    return IconPlug; // Default ikon
   };
 
   // Find det valgte lokale
@@ -211,10 +150,7 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
     });
   }, [rooms, bookings, date, startTime, endTime]);
 
-  // Valider booking
-  // Regler:
-  // - Man kan booke i halve timer (00 eller 30 minutter)
-  // - Maksimal varighed er 2 timer
+  // Validerer booking - tjekker alle regler
   const validateBooking = (): string | null => {
     if (!date) {
       return 'Vælg en dato';
@@ -349,7 +285,7 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
     onClose();
   };
 
-  // Normaliser start-tid til halve timer når brugeren tabber ud af feltet
+  // Normaliserer tid til halve timer (00 eller 30)
   const handleStartTimeBlur = () => {
     if (!startTime) return;
     

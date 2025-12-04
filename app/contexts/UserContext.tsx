@@ -1,16 +1,7 @@
 // contexts/UserContext.tsx
 'use client';
 
-/**
- * User Context
- * 
- * Denne context håndterer brugerautentificering og brugerdata:
- * - Tjekker om bruger er logget ind ved app start
- * - Giver login og logout funktionalitet
- * - Synkroniserer brugerdata med Supabase
- * - Lytter til auth state changes for real-time opdateringer
- */
-
+// User Context - Håndterer brugerautentificering og brugerdata
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types/user';
 import { supabase } from '../lib/supabaseClient';
@@ -20,25 +11,21 @@ interface UserContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  // Når Supabase auth er implementeret, kan vi tilføje:
-  // signUp: (email: string, password: string, userType: UserType) => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  // State (tilstand) - gemmer værdier der kan ændres
-  const [user, setUser] = useState<User | null>(null);    // Den aktuelle bruger (eller null hvis ikke logget ind)
-  const [loading, setLoading] = useState(true);             // Om brugerdata stadig loader
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Tjek om bruger er logget ind når komponenten loader
+  // Tjek om bruger er logget ind ved app start
   useEffect(() => {
     if (!supabase) {
       setLoading(false);
       return;
     }
 
-    // Gem supabase i lokal variabel så TypeScript ved den ikke er null
     const client = supabase;
 
     const checkUser = async () => {
@@ -96,14 +83,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  /**
-   * Logger brugeren ind med email og password
-   * Henter brugerdata fra Supabase og opdaterer user state
-   * 
-   * @param email - Brugerens email
-   * @param password - Brugerens password
-   * @throws Error hvis login fejler eller Supabase ikke er konfigureret
-   */
+  // Logger brugeren ind
   const login = async (email: string, password: string) => {
     if (!supabase) {
       throw new Error('Supabase er ikke konfigureret');
@@ -147,10 +127,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  /**
-   * Logger brugeren ud
-   * Fjerner session fra Supabase og nulstiller user state
-   */
+  // Logger brugeren ud
   const logout = async () => {
     if (!supabase) return;
     
@@ -172,23 +149,4 @@ export function useUser() {
   }
   return context;
 }
-
-// TODO: Hjælpefunktion til at hente brugerdata fra Supabase
-// async function fetchUserData(userId: string): Promise<User> {
-//   const { data, error } = await supabase
-//     .from('users')
-//     .select('*')
-//     .eq('id', userId)
-//     .single();
-//   
-//   if (error) throw error;
-//   
-//   return {
-//     id: data.id,
-//     email: data.email,
-//     name: data.name,
-//     avatarUrl: data.avatar_url,
-//     userType: data.user_type as UserType,
-//   };
-// }
 

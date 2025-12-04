@@ -1,17 +1,5 @@
 // app/components/useRoomAvailability.ts
-
-/**
- * Room Availability Hook
- * 
- * Denne hook beregner status for hvert lokale baseret på eksisterende bookinger:
- * - "Ledig" (grøn): Lokalet er ledigt nu
- * - "Optaget" (rød): Lokalet er booket lige nu
- * - "Kommende" (gul): Lokalet bliver ledigt inden for 20 minutter
- * 
- * Hook'en beregner også info tekst der viser næste booking tid eller ledighed
- */
-
-// Typer for lokaler og bookinger
+// Hook der beregner status for hvert lokale baseret på bookinger
 type Room = {
   id: string;
   name: string;
@@ -41,12 +29,6 @@ type RoomWithStatus = Room & {
 
 type BookingsByRoom = { [roomId: string]: Booking[] };
 
-/**
- * Hook der beregner status for hvert lokale baseret på bookinger
- * @param roomsRaw - Liste af lokaler
- * @param bookingsByRoom - Bookinger grupperet efter lokale ID
- * @returns Lokaler med beregnet status
- */
 export function useRoomAvailability(
   roomsRaw: Room[],
   bookingsByRoom: BookingsByRoom
