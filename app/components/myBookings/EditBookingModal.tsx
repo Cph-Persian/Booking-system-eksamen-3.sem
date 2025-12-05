@@ -66,7 +66,7 @@ export function EditBookingModal({
   // Validerer booking
   const validateBooking = (): string | null => {
     if (!startTime || !endTime) {
-      return 'Vælg både start og slut tid';
+      return 'Du skal vælge både start- og sluttid for at opdatere booking';
     }
 
     const [startHours, startMinutes] = startTime.split(':').map(Number);
@@ -74,10 +74,10 @@ export function EditBookingModal({
 
     // Tjek halve timer
     if (startMinutes !== 0 && startMinutes !== 30) {
-      return 'Start tid skal være i halve timer (fx 09:00, 09:30)';
+      return 'Starttid skal være i halve timer. Vælg fx 09:00 eller 09:30';
     }
     if (endMinutes !== 0 && endMinutes !== 30) {
-      return 'Slut tid skal være i halve timer (fx 09:00, 09:30)';
+      return 'Sluttid skal være i halve timer. Vælg fx 09:00 eller 09:30';
     }
 
     // Opret Date objekter for at beregne varighed
@@ -85,12 +85,12 @@ export function EditBookingModal({
     const endTotalMinutes = endHours * 60 + endMinutes;
 
     if (endTotalMinutes <= startTotalMinutes) {
-      return 'Slut tid skal være efter start tid';
+      return 'Sluttid skal være senere end starttid';
     }
 
     const durationMinutes = endTotalMinutes - startTotalMinutes;
     if (durationMinutes > 120) {
-      return 'Maksimal booking-tid er 2 timer';
+      return 'Du kan maksimalt booke lokale i 2 timer ad gangen';
     }
 
     return null;

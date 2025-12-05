@@ -154,9 +154,10 @@ export default function BookingPage() {
         const convertedBookings = data.map(convertSupabaseBookingToBooking);
         setAllBookings(convertedBookings);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Fejl ved hentning af bookinger:', err);
-      setBookingsError(err.message || 'Kunne ikke hente bookinger');
+      const errorMessage = err instanceof Error ? err.message : 'Vi kunne desværre ikke hente dine bookinger lige nu. Prøv venligst igen senere';
+      setBookingsError(errorMessage);
       setAllBookings([]);
     } finally {
       setBookingsLoading(false);
@@ -239,9 +240,10 @@ export default function BookingPage() {
       setAllBookings(prevBookings => prevBookings.filter(b => b.id !== selectedBooking.id));
       setCancelModalOpened(false);
       setSelectedBooking(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Fejl ved aflysning af booking:', err);
-      setBookingsError(err.message || 'Kunne ikke aflyse booking');
+      const errorMessage = err instanceof Error ? err.message : 'Vi kunne desværre ikke aflyse din booking lige nu. Prøv venligst igen';
+      setBookingsError(errorMessage);
     } finally {
       setCancelLoading(false);
     }
@@ -257,16 +259,16 @@ export default function BookingPage() {
 
     try {
       const originalBooking = allBookings.find(b => b.id === bookingId);
-      if (!originalBooking) throw new Error('Booking ikke fundet');
+      if (!originalBooking) throw new Error('Vi kunne ikke finde din booking. Prøv at opdatere siden');
 
       const dateMatch = originalBooking.dato.match(/(\d+)\.\s*(\w+),\s*(\d+)/);
-      if (!dateMatch) throw new Error('Kunne ikke parse dato');
+      if (!dateMatch) throw new Error('Der opstod en fejl ved læsning af datoen. Prøv venligst igen');
 
       const day = parseInt(dateMatch[1]);
       const monthIndex = MONTH_NAMES.findIndex(m => m.toLowerCase() === dateMatch[2].toLowerCase());
       const year = parseInt(dateMatch[3]);
 
-      if (monthIndex === -1) throw new Error('Ugyldig måned');
+      if (monthIndex === -1) throw new Error('Den valgte måned er ikke gyldig. Prøv venligst igen');
 
       const [startHours, startMinutes] = newStartTime.split(':').map(Number);
       const [endHours, endMinutes] = newEndTime.split(':').map(Number);
@@ -297,9 +299,10 @@ export default function BookingPage() {
         setSelectedBooking(null);
         setEditSuccess(false);
       }, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Fejl ved redigering af booking:', err);
-      setBookingsError(err.message || 'Kunne ikke redigere booking');
+      const errorMessage = err instanceof Error ? err.message : 'Vi kunne desværre ikke opdatere din booking lige nu. Prøv venligst igen';
+      setBookingsError(errorMessage);
     } finally {
       setEditLoading(false);
     }

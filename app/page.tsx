@@ -79,7 +79,7 @@ export default function Home() {
   // Hent data fra databasen
   useEffect(() => {
     if (!supabase) {
-      setError('Supabase er ikke konfigureret');
+      setError('Systemet er ikke konfigureret korrekt. Kontakt venligst support');
       setLoading(false);
       return;
     }
@@ -95,7 +95,7 @@ export default function Home() {
         ]);
 
         if (roomsResult.error) {
-          setError(`Fejl: ${roomsResult.error.message}`);
+          setError('Vi kunne desværre ikke hente lokalerne lige nu. Prøv venligst igen senere');
         } else {
           setRooms((roomsResult.data as Room[]) || []);
         }
@@ -107,7 +107,7 @@ export default function Home() {
           setBookings((bookingsResult.data as Booking[]) || []);
         }
       } catch (err) {
-        setError('Uventet fejl ved hentning af data');
+        setError('Der opstod en uventet fejl ved hentning af data. Prøv venligst igen senere');
       } finally {
         setLoading(false);
       }

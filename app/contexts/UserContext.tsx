@@ -86,16 +86,26 @@ export function UserProvider({ children }: { children: ReactNode }) {
   // Logger brugeren ind
   const login = async (email: string, password: string) => {
     if (!supabase) {
-      throw new Error('Supabase er ikke konfigureret');
+      throw new Error('Systemet er ikke konfigureret korrekt. Kontakt venligst support');
     }
 
-    // Login med Supabase authentication
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      // Login med Supabase authentication
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) throw error;
+      if (error) {
+        // Konverter tekniske fejl til forståelige beskeder
+        if (error.message.includes('Invalid login credentials') || error.message.includes('Email not confirmed')) {
+          throw new Error('Forkert email eller adgangskode. Prøv venligst igen');
+        }
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          throw new Error('Kunne ikke oprette forbindelse til serveren. Tjek din internetforbindelse og prøv igen');
+        }
+        throw error;
+      }
 
     if (data.user) {
       // Hent brugerdata fra Supabase users tabel
@@ -124,6 +134,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
           userType: userData.user_type,
         });
       }
+    }
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+          throw new Error('Kunne ikke oprette forbindelse til serveren. Tjek din internetforbindelse og prøv igen');
+        }
+        throw err;
+      }
+      throw new Error('Der opstod en uventet fejl ved login. Prøv venligst igen');
     }
   };
 

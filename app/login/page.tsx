@@ -49,7 +49,8 @@ export default function LoginPage() {
       router.push('/');
     } catch (err: any) {
       console.error('Login fejl:', err);
-      setError(err.message || 'Forkert email eller password');
+      const errorMessage = err instanceof Error ? err.message : 'Forkert email eller adgangskode. Prøv venligst igen';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -83,9 +84,18 @@ export default function LoginPage() {
             backgroundImage: `url(${loginBg.src})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
+            overflow: 'visible',
           }}
         >
-          <Group gap="sm" mb="xl">
+          <Group 
+            gap="sm" 
+            style={{ 
+              position: 'absolute',
+              top: '15px',
+              left: '15px',
+              zIndex: 100,
+            }}
+          >
             <Image 
               src="/ek-logo.jpg" 
               alt="EK Logo" 

@@ -90,26 +90,26 @@ export function QuickBookingModal({
 
   // Validerer booking - tjekker alle regler
   const validateBooking = (): string | null => {
-    if (!startTime || !endTime) return 'Vælg både start og slut tid';
+    if (!startTime || !endTime) return 'Du skal vælge både start- og sluttid for at booke lokale';
 
     const today = new Date();
     const startDateTime = timeStringToDate(startTime, today);
     const endDateTime = timeStringToDate(endTime, today);
     
-    if (!startDateTime || !endDateTime) return 'Ugyldig tid';
-    if (endDateTime <= startDateTime) return 'Slut tid skal være efter start tid';
+    if (!startDateTime || !endDateTime) return 'Den valgte tid er ikke gyldig. Prøv at vælge tiden igen';
+    if (endDateTime <= startDateTime) return 'Sluttid skal være senere end starttid';
 
     const startMinutes = Number(startTime.split(':')[1]);
     const endMinutes = Number(endTime.split(':')[1]);
     const validMinute = (m: number) => m === 0 || m === 30;
 
     if (!validMinute(startMinutes) || !validMinute(endMinutes)) {
-      return 'Bookinger skal være i halve timer (fx 09:00, 09:30, 10:00)';
+      return 'Du kan kun booke i halve timer. Vælg fx 09:00, 09:30 eller 10:00';
     }
 
     const durationMinutes = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60);
-    if (durationMinutes > 120) return 'Maksimal booking-tid er 2 timer';
-    if (startDateTime < new Date()) return 'Du kan ikke booke i fortiden';
+    if (durationMinutes > 120) return 'Du kan maksimalt booke lokale i 2 timer ad gangen';
+    if (startDateTime < new Date()) return 'Du kan ikke booke et lokale i fortiden. Vælg en tid der ligger i fremtiden';
 
     // Tjek for overlappende bookinger
     const hasOverlap = bookings.some((booking) => {
@@ -122,7 +122,7 @@ export function QuickBookingModal({
       );
     });
 
-    return hasOverlap ? 'Lokalet er allerede booket i dette tidsrum' : null;
+    return hasOverlap ? 'Lokalet er desværre allerede booket i det tidsrum du har valgt. Prøv at vælge et andet tidspunkt' : null;
   };
 
   // Opretter booking i Supabase
@@ -146,7 +146,7 @@ export function QuickBookingModal({
       const endDateTime = timeStringToDate(endTime, today);
       
       if (!startDateTime || !endDateTime) {
-        setError('Ugyldig tid');
+        setError('Den valgte tid er ikke gyldig. Prøv at vælge tiden igen');
         setSubmitting(false);
         return;
       }
@@ -170,8 +170,9 @@ export function QuickBookingModal({
         onBookingSuccess?.();
         onClose();
       }, 1500);
-    } catch (err: any) {
-      setError(err.message || 'Fejl ved booking');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Der opstod en uventet fejl ved oprettelse af booking. Prøv venligst igen';
+      setError(errorMessage);
     } finally {
       setSubmitting(false);
     }

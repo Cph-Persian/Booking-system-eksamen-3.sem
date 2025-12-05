@@ -63,7 +63,7 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
   useEffect(() => {
     if (opened) {
       if (!supabase) {
-        setError('Supabase er ikke konfigureret');
+        setError('Systemet er ikke konfigureret korrekt. Kontakt venligst support');
         return;
       }
       
@@ -153,19 +153,19 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
   // Validerer booking - tjekker alle regler
   const validateBooking = (): string | null => {
     if (!date) {
-      return 'Vælg en dato';
+      return 'Du skal vælge en dato for at booke lokale';
     }
 
     if (!startTime) {
-      return 'Vælg start tid';
+      return 'Du skal vælge en starttid';
     }
 
     if (!endTime) {
-      return 'Vælg slut tid';
+      return 'Du skal vælge en sluttid';
     }
 
     if (!selectedRoomId) {
-      return 'Vælg et lokale';
+      return 'Du skal vælge et lokale at booke';
     }
 
     // Kombiner dato med tider
@@ -173,12 +173,12 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
     const endDateTime = timeStringToDate(endTime, date);
     
     if (!startDateTime || !endDateTime) {
-      return 'Ugyldig tid';
+      return 'Den valgte tid er ikke gyldig. Prøv at vælge tiden igen';
     }
 
     // Tjek at slut tid er efter start tid
     if (endDateTime <= startDateTime) {
-      return 'Slut tid skal være efter start tid';
+      return 'Sluttid skal være senere end starttid';
     }
 
     // Tjek at det er halve timer (00 eller 30 minutter)
@@ -187,7 +187,7 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
     const validMinute = (m: number) => m === 0 || m === 30;
     
     if (!validMinute(startMinutes) || !validMinute(endMinutes)) {
-      return 'Bookinger skal være i halve timer (fx 09:00, 09:30, 10:00)';
+      return 'Du kan kun booke i halve timer. Vælg fx 09:00, 09:30 eller 10:00';
     }
 
     // Beregn varighed i minutter
@@ -195,7 +195,7 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
     
     // Tjek maks 2 timer
     if (durationMinutes > 120) {
-      return 'Maksimal booking-tid er 2 timer';
+      return 'Du kan maksimalt booke lokale i 2 timer ad gangen';
     }
 
     // Tjek at tiden ikke er i fortiden (hvis det er i dag)
@@ -204,7 +204,7 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
     const selectedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     
     if (selectedDate.getTime() === today.getTime() && startDateTime < now) {
-      return 'Du kan ikke booke i fortiden';
+      return 'Du kan ikke booke et lokale i fortiden. Vælg en tid der ligger i fremtiden';
     }
 
     return null;
@@ -232,7 +232,7 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
       const endDateTime = timeStringToDate(endTime, date);
       
       if (!startDateTime || !endDateTime) {
-        setError('Ugyldig tid');
+        setError('Den valgte tid er ikke gyldig. Prøv at vælge tiden igen');
         setSubmitting(false);
         return;
       }
@@ -267,9 +267,10 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
         onBookingSuccess?.();
         onClose();
       }, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Fejl ved booking:', err);
-      setError(err.message || 'Der opstod en fejl ved booking af lokale');
+      const errorMessage = err instanceof Error ? err.message : 'Der opstod en uventet fejl ved oprettelse af booking. Prøv venligst igen';
+      setError(errorMessage);
     } finally {
       setSubmitting(false);
     }
