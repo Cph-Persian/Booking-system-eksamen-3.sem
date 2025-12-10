@@ -4,11 +4,34 @@ import { getSupabaseAdmin } from "../../lib/supabaseAdmin";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch (parseError) {
+      console.error("JSON parse fejl:", parseError);
+      return NextResponse.json({ 
+        error: 'Ugyldig data modtaget. Prøv venligst igen.' 
+      }, { status: 400 });
+    }
 
     console.log("body", body);
 
-    const supabase = getSupabaseAdmin();
+    // Valider at påkrævede felter er til stede
+    if (!body.room_id || !body.start_time || !body.end_time) {
+      return NextResponse.json({ 
+        error: 'Manglende påkrævede oplysninger. Prøv venligst igen.' 
+      }, { status: 400 });
+    }
+
+    let supabase;
+    try {
+      supabase = getSupabaseAdmin();
+    } catch (adminError) {
+      console.error("Supabase admin fejl:", adminError);
+      return NextResponse.json({ 
+        error: 'Systemet er ikke konfigureret korrekt. Kontakt venligst support.' 
+      }, { status: 500 });
+    }
 
     const { data, error } = await supabase
       .from("bookings")
@@ -22,18 +45,23 @@ export async function POST(req: Request) {
       .single();
 
     if (error) {
+      console.error("Supabase insert fejl:", error);
       const userMessage = error.message.includes('duplicate') || error.message.includes('unique')
-        ? 'Denne booking eksisterer allerede'
+        ? 'Denne booking eksisterer allerede. Prøv venligst med et andet tidspunkt.'
         : error.message.includes('overlap') || error.message.includes('conflict')
-        ? 'Lokalet er allerede booket i dette tidsrum'
-        : 'Der opstod en fejl ved oprettelse af booking. Prøv venligst igen';
+        ? 'Lokalet er desværre allerede booket i det valgte tidsrum. Prøv et andet tidspunkt.'
+        : error.message.includes('permission') || error.message.includes('policy')
+        ? 'Du har ikke tilladelse til at oprette denne booking. Kontakt venligst support.'
+        : `Der opstod en fejl ved oprettelse af booking: ${error.message}. Prøv venligst igen.`;
       return NextResponse.json({ error: userMessage }, { status: 400 });
     }
 
     return NextResponse.json({ booking: data });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Der opstod en uventet fejl. Prøv venligst igen';
-    console.error("/api/booking error:", err);
+    console.error("/api/booking POST error:", err);
+    const message = err instanceof Error 
+      ? err.message 
+      : 'Der opstod en uventet fejl. Prøv venligst igen';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

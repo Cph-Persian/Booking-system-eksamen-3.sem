@@ -1,7 +1,5 @@
-// app/components/bookingModal/Demo.tsx
 'use client';
 
-// Booking modal - Book lokale frem i tiden
 import { useState, useEffect, useMemo } from 'react';
 import { DatePickerInput, TimeInput } from '@mantine/dates';
 import { Button, Modal, Stack, Text, Select, Alert, Loader, Center, Group, Badge, Divider, Box } from '@mantine/core';
@@ -9,6 +7,7 @@ import { IconAlertCircle, IconCheck } from '@tabler/icons-react';
 import '@mantine/dates/styles.css';
 import { supabase } from '../../lib/supabaseClient';
 import { getFeatureIcon } from '../../utils/featureIcons';
+import { timeStringToDate, normalizeTime, getDateObj } from '../../utils/bookingUtils';
 
 type Room = {
   id: string;
@@ -38,175 +37,86 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Konverterer time string til Date objekt
-  const timeStringToDate = (timeStr: string, baseDate: Date): Date | null => {
-    if (!timeStr) return null;
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes)) return null;
-    const date = new Date(baseDate);
-    date.setHours(hours, minutes, 0, 0);
-    return date;
-  };
+  const selectedRoom = useMemo(() => 
+    selectedRoomId ? rooms.find(r => r.id === selectedRoomId) || null : null,
+    [selectedRoomId, rooms]
+  );
 
-  // Find det valgte lokale
-  const selectedRoom = useMemo(() => {
-    if (!selectedRoomId) return null;
-    return rooms.find(room => room.id === selectedRoomId) || null;
-  }, [selectedRoomId, rooms]);
-
-  // Hent lokaler når modal åbnes
   useEffect(() => {
-    if (opened) {
-      if (!supabase) {
-        setError('Systemet er ikke konfigureret korrekt. Kontakt venligst support');
-        return;
-      }
-      
-      const fetchRooms = async () => {
-        if (!supabase) return;
-        
-        const { data } = await supabase
-          .from('rooms')
-          .select('id, name, description, capacity, features')
-          .order('name', { ascending: true });
-        
-        if (data) {
-          setRooms(data as Room[]);
-        }
-      };
-      fetchRooms();
-    }
+    if (!opened || !supabase) return;
+    supabase.from('rooms').select('id, name, description, capacity, features').order('name')
+      .then(({ data }) => data && setRooms(data as Room[]));
   }, [opened]);
 
-  // Hent eksisterende bookinger når dato eller tid ændres
   useEffect(() => {
-    if (opened && date) {
-      if (!supabase) {
-        return;
-      }
-      
-      const fetchBookings = async () => {
-        if (!supabase) return;
-        
-        // Hent alle bookinger for den valgte dato
-        const startOfDay = new Date(date);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(date);
-        endOfDay.setHours(23, 59, 59, 999);
-
-        const { data } = await supabase
-          .from('bookings')
-          .select('*')
-          .gte('start_time', startOfDay.toISOString())
-          .lte('start_time', endOfDay.toISOString());
-
-        if (data) {
-          setBookings(data as Booking[]);
-        }
-      };
-      fetchBookings();
-    } else {
+    if (!opened || !date || !supabase) {
       setBookings([]);
+      return;
     }
+    const dateObj = getDateObj(date);
+    if (!dateObj) return;
+    const startOfDay = new Date(dateObj);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(dateObj);
+    endOfDay.setHours(23, 59, 59, 999);
+    supabase.from('bookings').select('*')
+      .gte('start_time', startOfDay.toISOString())
+      .lte('start_time', endOfDay.toISOString())
+      .then(({ data }) => data && setBookings(data as Booking[]));
   }, [opened, date]);
 
-  // Beregn ledige lokaler baseret på valgt dato og tid
   const availableRooms = useMemo(() => {
-    if (!date || !startTime || !endTime) {
-      return rooms;
-    }
-
-    // Kombiner dato med start og slut tid
-    const startDateTime = timeStringToDate(startTime, date);
-    const endDateTime = timeStringToDate(endTime, date);
+    if (!date || !startTime || !endTime) return rooms;
+    const dateObj = getDateObj(date);
+    if (!dateObj) return rooms;
+    const startDateTime = timeStringToDate(startTime, dateObj);
+    const endDateTime = timeStringToDate(endTime, dateObj);
+    if (!startDateTime || !endDateTime) return rooms;
     
-    if (!startDateTime || !endDateTime) {
-      return rooms;
-    }
-
-    // Filtrer lokaler der er ledige i det valgte tidsrum
-    return rooms.filter((room) => {
-      const roomBookings = bookings.filter((b) => b.room_id === room.id);
-      
-      // Tjek om der er overlappende bookinger
-      const hasOverlap = roomBookings.some((booking) => {
-        const bookingStart = new Date(booking.start_time);
-        const bookingEnd = new Date(booking.end_time);
-        
-        // Tjek om tidsrummet overlapper
-        return (
-          (startDateTime >= bookingStart && startDateTime < bookingEnd) ||
-          (endDateTime > bookingStart && endDateTime <= bookingEnd) ||
-          (startDateTime <= bookingStart && endDateTime >= bookingEnd)
-        );
+    return rooms.filter(room => {
+      const roomBookings = bookings.filter(b => b.room_id === room.id);
+      return !roomBookings.some(booking => {
+        const bs = new Date(booking.start_time);
+        const be = new Date(booking.end_time);
+        return (startDateTime >= bs && startDateTime < be) ||
+               (endDateTime > bs && endDateTime <= be) ||
+               (startDateTime <= bs && endDateTime >= be);
       });
-
-      return !hasOverlap;
     });
   }, [rooms, bookings, date, startTime, endTime]);
 
-  // Validerer booking - tjekker alle regler
   const validateBooking = (): string | null => {
-    if (!date) {
-      return 'Du skal vælge en dato for at booke lokale';
-    }
-
-    if (!startTime) {
-      return 'Du skal vælge en starttid';
-    }
-
-    if (!endTime) {
-      return 'Du skal vælge en sluttid';
-    }
-
-    if (!selectedRoomId) {
-      return 'Du skal vælge et lokale at booke';
-    }
-
-    // Kombiner dato med tider
-    const startDateTime = timeStringToDate(startTime, date);
-    const endDateTime = timeStringToDate(endTime, date);
+    if (!date) return 'Vælg venligst en dato for din booking.';
+    const dateObj = getDateObj(date);
+    if (!dateObj) return 'Den valgte dato er ikke gyldig. Prøv venligst igen.';
+    if (!startTime) return 'Vælg venligst en starttid for din booking.';
+    if (!endTime) return 'Vælg venligst en sluttid for din booking.';
+    if (!selectedRoomId) return 'Vælg venligst et lokale at booke.';
     
-    if (!startDateTime || !endDateTime) {
-      return 'Den valgte tid er ikke gyldig. Prøv at vælge tiden igen';
-    }
-
-    // Tjek at slut tid er efter start tid
-    if (endDateTime <= startDateTime) {
-      return 'Sluttid skal være senere end starttid';
-    }
-
-    // Tjek at det er halve timer (00 eller 30 minutter)
-    const [startHours, startMinutes] = startTime.split(':').map(Number);
-    const [endHours, endMinutes] = endTime.split(':').map(Number);
-    const validMinute = (m: number) => m === 0 || m === 30;
+    const startDateTime = timeStringToDate(startTime, dateObj);
+    const endDateTime = timeStringToDate(endTime, dateObj);
+    if (!startDateTime || !endDateTime) return 'Den valgte tid er ikke gyldig. Prøv venligst igen.';
+    if (endDateTime <= startDateTime) return 'Sluttiden skal være efter starttiden. Juster venligst tiderne.';
     
-    if (!validMinute(startMinutes) || !validMinute(endMinutes)) {
-      return 'Du kan kun booke i halve timer. Vælg fx 09:00, 09:30 eller 10:00';
+    const [, startMinutes] = startTime.split(':').map(Number);
+    const [, endMinutes] = endTime.split(':').map(Number);
+    if ((startMinutes !== 0 && startMinutes !== 30) || (endMinutes !== 0 && endMinutes !== 30)) {
+      return 'Bookinger skal starte og slutte på hele eller halve timer (f.eks. 09:00, 09:30, 10:00).';
     }
-
-    // Beregn varighed i minutter
+    
     const durationMinutes = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60);
+    if (durationMinutes > 120) return 'Du kan maksimalt booke et lokale i 2 timer. Juster venligst varigheden.';
     
-    // Tjek maks 2 timer
-    if (durationMinutes > 120) {
-      return 'Du kan maksimalt booke lokale i 2 timer ad gangen';
-    }
-
-    // Tjek at tiden ikke er i fortiden (hvis det er i dag)
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const selectedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    
+    const selectedDate = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
     if (selectedDate.getTime() === today.getTime() && startDateTime < now) {
-      return 'Du kan ikke booke et lokale i fortiden. Vælg en tid der ligger i fremtiden';
+      return 'Du kan ikke booke et lokale i fortiden. Vælg venligst et fremtidigt tidspunkt.';
     }
-
     return null;
   };
 
@@ -227,36 +137,43 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
     setSubmitting(true);
 
     try {
-      // Kombiner dato med tider
-      const startDateTime = timeStringToDate(startTime, date);
-      const endDateTime = timeStringToDate(endTime, date);
-      
-      if (!startDateTime || !endDateTime) {
-        setError('Den valgte tid er ikke gyldig. Prøv at vælge tiden igen');
+      const dateObj = getDateObj(date);
+      if (!dateObj) {
+        setError('Den valgte dato er ikke gyldig. Prøv venligst igen.');
         setSubmitting(false);
         return;
       }
-
-      // Hent bruger (hvis der er authentication)
-      const { data: { user } } = await supabase.auth.getUser();
-
-      // Opret booking
-      const { error: insertError } = await supabase
-        .from('bookings')
-        .insert({
-          room_id: selectedRoomId,
-          start_time: startDateTime.toISOString(),
-          end_time: endDateTime.toISOString(),
-          user_id: user?.id || null,
-        });
+      const startDateTime = timeStringToDate(startTime, dateObj);
+      const endDateTime = timeStringToDate(endTime, dateObj);
+      if (!startDateTime || !endDateTime) {
+        setError('Den valgte tid er ikke gyldig. Prøv venligst igen.');
+        setSubmitting(false);
+        return;
+      }
+      
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) throw new Error('Kunne ikke verificere din bruger. Prøv venligst at logge ind igen.');
+      
+      const { error: insertError } = await supabase.from('bookings').insert({
+        room_id: selectedRoomId,
+        start_time: startDateTime.toISOString(),
+        end_time: endDateTime.toISOString(),
+        user_id: user?.id || null,
+      });
 
       if (insertError) {
-        throw insertError;
+        if (insertError.message.includes('duplicate') || insertError.message.includes('unique')) {
+          throw new Error('Denne booking eksisterer allerede. Prøv venligst med et andet tidspunkt.');
+        } else if (insertError.message.includes('permission') || insertError.message.includes('policy')) {
+          throw new Error('Du har ikke tilladelse til at oprette denne booking. Kontakt venligst support.');
+        } else if (insertError.message.includes('overlap') || insertError.message.includes('conflict')) {
+          throw new Error('Lokalet er desværre allerede booket i det valgte tidsrum. Prøv et andet tidspunkt.');
+        } else {
+          throw new Error(`Der opstod en fejl ved oprettelse af booking: ${insertError.message}. Prøv venligst igen.`);
+        }
       }
 
       setSuccess(true);
-      
-      // Reset form efter kort pause
       setTimeout(() => {
         setDate(null);
         setStartTime('');
@@ -268,8 +185,11 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
         onClose();
       }, 1500);
     } catch (err: unknown) {
-      console.error('Fejl ved booking:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Der opstod en uventet fejl ved oprettelse af booking. Prøv venligst igen';
+      const errorMessage = err instanceof Error 
+        ? (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')
+          ? 'Kunne ikke oprette forbindelse til serveren. Tjek din internetforbindelse og prøv igen.'
+          : err.message)
+        : 'Der opstod en uventet fejl ved oprettelse af booking. Prøv venligst igen.';
       setError(errorMessage);
     } finally {
       setSubmitting(false);
@@ -286,28 +206,13 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
     onClose();
   };
 
-  // Normaliserer tid til halve timer (00 eller 30)
   const handleStartTimeBlur = () => {
-    if (!startTime) return;
-    
-    const [rawHours, rawMinutes = '0'] = startTime.split(':');
-    const hoursNum = parseInt(rawHours, 10) || 0;
-    const minutesNum = parseInt(rawMinutes, 10) || 0;
-
-    // Normaliser til nærmeste halve time (00 eller 30)
-    const normalizedMinutesNum = minutesNum < 30 ? 0 : 30;
-    const normalizedStart = `${hoursNum.toString().padStart(2, '0')}:${normalizedMinutesNum
-      .toString()
-      .padStart(2, '0')}`;
-    setStartTime(normalizedStart);
+    if (startTime) setStartTime(normalizeTime(startTime));
   };
 
-  // Opdater start-tid når brugeren skriver (ingen automatisk slut-tid)
   const handleStartTimeChange = (value: string) => {
     setStartTime(value);
-    if (!value) {
-      setEndTime('');
-    }
+    if (!value) setEndTime('');
   };
 
   return (
@@ -364,20 +269,10 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
           <Text size="sm" fw={500} mb={5}>
             Slut tid <Text component="span" c="red">*</Text>
           </Text>
-          <TimeInput
+            <TimeInput
             value={endTime}
             onChange={(e) => setEndTime(e.currentTarget.value)}
-            onBlur={() => {
-              if (!endTime) return;
-              const [rawHours, rawMinutes = '0'] = endTime.split(':');
-              const hoursNum = parseInt(rawHours, 10) || 0;
-              const minutesNum = parseInt(rawMinutes, 10) || 0;
-              const normalizedMinutesNum = minutesNum < 30 ? 0 : 30;
-              const normalized = `${hoursNum.toString().padStart(2, '0')}:${normalizedMinutesNum
-                .toString()
-                .padStart(2, '0')}`;
-              setEndTime(normalized);
-            }}
+            onBlur={() => endTime && setEndTime(normalizeTime(endTime))}
             placeholder="Vælg slut tid"
             min={startTime || undefined}
           />
@@ -391,23 +286,17 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
             <Text size="sm" fw={500} mb={5}>
               Vælg lokale <Text component="span" c="red">*</Text>
             </Text>
-            {loading ? (
-              <Center py="md">
-                <Loader size="sm" />
-              </Center>
-            ) : (
-              <Select
-                value={selectedRoomId}
-                onChange={setSelectedRoomId}
-                placeholder="Vælg et ledigt lokale"
-                data={availableRooms.map((room) => ({
-                  value: room.id,
-                  label: `${room.name}${room.capacity ? ` (${room.capacity} pladser)` : ''}`,
-                }))}
-                searchable
-                clearable
-              />
-            )}
+            <Select
+              value={selectedRoomId}
+              onChange={setSelectedRoomId}
+              placeholder="Vælg et ledigt lokale"
+              data={availableRooms.map(room => ({
+                value: room.id,
+                label: `${room.name}${room.capacity ? ` (${room.capacity} pladser)` : ''}`,
+              }))}
+              searchable
+              clearable
+            />
             {availableRooms.length === 0 && (
               <Text size="xs" c="red" mt={4}>
                 Ingen ledige lokaler i det valgte tidsrum

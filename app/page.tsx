@@ -1,4 +1,3 @@
-// app/page.tsx - Hovedside med oversigt over alle lokaler
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
@@ -42,41 +41,29 @@ export default function Home() {
   const [quickBookingModalOpened, setQuickBookingModalOpened] = useState(false);
   const [selectedRoomForQuickBooking, setSelectedRoomForQuickBooking] = useState<Room | null>(null);
 
-  // Redirect til login hvis bruger ikke er logget ind
   useEffect(() => {
-    if (!userLoading && !user) {
-      router.push('/login');
-    }
+    if (!userLoading && !user) router.push('/login');
   }, [user, userLoading, router]);
 
-  // Grupper bookinger efter lokale ID (kun fremtidige bookinger)
   const bookingsByRoom = useMemo(() => {
     const grouped: { [roomId: string]: Booking[] } = {};
     const now = new Date();
-
-    bookings.forEach((booking) => {
-      const bookingEnd = new Date(booking.end_time);
-      if (bookingEnd >= now) {
-        if (!grouped[booking.room_id]) {
-          grouped[booking.room_id] = [];
-        }
+    bookings.forEach(booking => {
+      if (new Date(booking.end_time) >= now) {
+        if (!grouped[booking.room_id]) grouped[booking.room_id] = [];
         grouped[booking.room_id].push(booking);
       }
     });
-
-    // Sorter bookinger for hvert lokale efter start tid
-    Object.keys(grouped).forEach((roomId) => {
+    Object.keys(grouped).forEach(roomId => {
       grouped[roomId].sort((a, b) => 
         new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
       );
     });
-
     return grouped;
   }, [bookings]);
 
   const roomsWithStatus = useRoomAvailability(rooms, bookingsByRoom);
 
-  // Hent data fra databasen
   useEffect(() => {
     if (!supabase) {
       setError('Systemet er ikke konfigureret korrekt. Kontakt venligst support');
@@ -84,24 +71,20 @@ export default function Home() {
       return;
     }
 
-    // Gem supabase i lokal variabel så TypeScript ved den ikke er null
     const supabaseClient = supabase;
-
     const fetchData = async () => {
+      if (!supabaseClient) return;
       try {
         const [roomsResult, bookingsResult] = await Promise.all([
           supabaseClient.from('rooms').select('*').order('name'),
           supabaseClient.from('bookings').select('*').order('start_time'),
         ]);
-
         if (roomsResult.error) {
           setError('Vi kunne desværre ikke hente lokalerne lige nu. Prøv venligst igen senere');
         } else {
           setRooms((roomsResult.data as Room[]) || []);
         }
-
         if (bookingsResult.error) {
-          console.error('Fejl ved bookinger:', bookingsResult.error.message);
           setBookings([]);
         } else {
           setBookings((bookingsResult.data as Booking[]) || []);
@@ -114,18 +97,13 @@ export default function Home() {
     };
 
     fetchData();
-
-    // Real-time opdateringer
-    const roomsChannel = supabaseClient
-      .channel('rooms-changes')
+    if (!supabaseClient) return;
+    const roomsChannel = supabaseClient.channel('rooms-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, fetchData)
       .subscribe();
-
-    const bookingsChannel = supabaseClient
-      .channel('bookings-changes')
+    const bookingsChannel = supabaseClient.channel('bookings-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, fetchData)
       .subscribe();
-
     return () => {
       supabaseClient.removeChannel(roomsChannel);
       supabaseClient.removeChannel(bookingsChannel);

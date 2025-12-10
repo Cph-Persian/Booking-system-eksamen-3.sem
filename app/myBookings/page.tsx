@@ -149,9 +149,15 @@ export default function BookingPage() {
 
       if (error) throw error;
 
-      // Konverter til Booking type og opdater state
+      // Konverter til Booking type og filtrer gamle bookinger (kun vis bookinger hvor end_time er i fremtiden)
       if (data) {
-        const convertedBookings = data.map(convertSupabaseBookingToBooking);
+        const now = new Date();
+        const convertedBookings = data
+          .filter((booking: any) => {
+            const endTime = new Date(booking.end_time);
+            return endTime >= now; // Kun vis bookinger der ikke er afsluttet
+          })
+          .map(convertSupabaseBookingToBooking);
         setAllBookings(convertedBookings);
       }
     } catch (err: unknown) {
