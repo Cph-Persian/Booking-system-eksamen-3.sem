@@ -1,22 +1,16 @@
-// app/login/page.tsx - Login side
+/**
+ * Login Page - Login side med split layout
+ * 
+ * Viser login formular med email og password input. Håndterer login via UserContext
+ * og redirecter til hovedside ved succes. Viser fejlbeskeder ved forkert login.
+ * Har split layout med baggrundsbillede på venstre side og form på højre side.
+ * Redirecter automatisk til hovedside hvis bruger allerede er logget ind.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Container,
-  Paper,
-  TextInput,
-  PasswordInput,
-  Button,
-  Text,
-  Title,
-  Stack,
-  Alert,
-  Group,
-  Loader,
-  Center,
-} from '@mantine/core';
+import { Paper, TextInput, PasswordInput, Button, Text, Title, Stack, Alert, Group, Loader, Center } from '@mantine/core';
 import { IconAlertCircle, IconEye, IconEyeOff } from '@tabler/icons-react';
 import { useUser } from '../contexts/UserContext';
 import classes from './AuthenticationImage.module.css';
@@ -24,38 +18,43 @@ import Image from 'next/image';
 import loginBg from '../img/login-baggrund.png';
 
 export default function LoginPage() {
+  // ========================================
+  // 1. STATE MANAGEMENT
+  // ========================================
   const router = useRouter();
   const { login, user, loading: userLoading } = useUser();
-  
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState(''); // Email input
+  const [password, setPassword] = useState(''); // Password input
+  const [error, setError] = useState<string | null>(null); // Fejlbesked
+  const [loading, setLoading] = useState(false); // Loading state ved login
 
-  // Redirect hvis allerede logget ind
+  // ========================================
+  // 2. AUTHENTICATION CHECK - Redirect hvis allerede logget ind
+  // ========================================
   useEffect(() => {
-    if (!userLoading && user) {
-      router.push('/');
-    }
+    if (!userLoading && user) router.push('/'); // Redirect til hovedside hvis logget ind
   }, [user, userLoading, router]);
 
+  // ========================================
+  // 3. LOGIN HANDLER - Håndterer login formular submit
+  // ========================================
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-
     try {
-      await login(email, password);
-      router.push('/');
+      await login(email, password); // Kalder login funktion fra UserContext
+      router.push('/'); // Redirect til hovedside ved succes
     } catch (err: any) {
-      console.error('Login fejl:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Forkert email eller adgangskode. Prøv venligst igen';
-      setError(errorMessage);
+      setError(err instanceof Error ? err.message : 'Forkert email eller adgangskode');
     } finally {
       setLoading(false);
     }
   };
 
+  // ========================================
+  // 4. LOADING STATE - Viser loader mens brugerdata hentes
+  // ========================================
   if (userLoading) {
     return (
       <Center style={{ minHeight: '100vh' }}>
@@ -64,14 +63,19 @@ export default function LoginPage() {
     );
   }
 
+  // ========================================
+  // 5. AUTHENTICATION CHECK - Returner null hvis allerede logget ind
+  // ========================================
   if (user) {
     return null;
   }
 
+  // ========================================
+  // 6. UI RENDERING - Login side med split layout
+  // ========================================
   return (
     <div className={classes.wrapper}>
       <div style={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
-        {/* Venstre side - Velkomst */}
         <Paper
           style={{
             flex: '1 1 50%',
@@ -87,56 +91,21 @@ export default function LoginPage() {
             overflow: 'visible',
           }}
         >
-          <Group 
-            gap="sm" 
-            style={{ 
-              position: 'absolute',
-              top: '15px',
-              left: '15px',
-              zIndex: 100,
-            }}
-          >
-            <Image 
-              src="/ek-logo.jpg" 
-              alt="EK Logo" 
-              width={60} 
-              height={60}
-              style={{ objectFit: 'contain', borderRadius: '100%' }}
-            />
+          <Group gap="sm" style={{ position: 'absolute', top: '15px', left: '15px', zIndex: 100 }}>
+            <Image src="/ek-logo.jpg" alt="EK Logo" width={60} height={60} style={{ objectFit: 'contain', borderRadius: '100%' }} />
             <div>
-              <Text size="xs" c="#0038A7" fw={500}>
-                ERHVERVSAKADEMI
-              </Text>
-              <Text size="xs" c="#0038A7" fw={500}>
-                KØBENHAVN
-              </Text>
+              <Text size="xs" c="#0038A7" fw={500}>ERHVERVSAKADEMI</Text>
+              <Text size="xs" c="#0038A7" fw={500}>KØBENHAVN</Text>
             </div>
           </Group>
-
-          <Text size="lg" c="#0038A7" mb="xs">
-            Velkommen til
-          </Text>
-          <Title order={1} size="3rem" fw={700} c="#0038A7" mb="md">
-            EK Lokaler
-          </Title>
+          <Text size="lg" c="#0038A7" mb="xs">Velkommen til</Text>
+          <Title order={1} size="3rem" fw={700} c="#0038A7" mb="md">EK Lokaler</Title>
           <Text size="md" c="#0038A7" style={{ maxWidth: '400px' }}>
-            Book dit næste studielokale, møderum eller grupperum nemt og hurtigt. 
-            Kræver login med din EK-mail.
+            Book dit næste studielokale, møderum eller grupperum nemt og hurtigt. Kræver login med din EK-mail.
           </Text>
         </Paper>
 
-        {/* Højre side - Login form */}
-        <Paper
-          className={classes.form}
-          style={{
-            flex: '1 1 50%',
-            background: 'white',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
+        <Paper className={classes.form} style={{ flex: '1 1 50%', background: 'white', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
           <Stack gap="xl" style={{ width: '100%', maxWidth: '450px' }}>
             <div style={{ marginBottom: '2rem' }}>
               <Title order={1} size="2.5rem" fw={700} c="#0038A7" mb="xl">
@@ -147,6 +116,7 @@ export default function LoginPage() {
               </Title>
             </div>
 
+            {/* Viser fejlbesked hvis login fejler */}
             {error && (
               <Alert icon={<IconAlertCircle size={16} />} color="red" title="Fejl" mb="xl">
                 {error}

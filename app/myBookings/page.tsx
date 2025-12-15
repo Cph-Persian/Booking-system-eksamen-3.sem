@@ -1,320 +1,251 @@
-// app/myBookings/page.tsx - Mine bookinger side
+/**
+ * My Bookings Page - Side der viser brugerens bookinger
+ * 
+ * Henter alle bookinger for den aktuelle bruger fra Supabase og viser dem i en liste.
+ * Tillader filtrering efter dato og søgning i lokale, type eller udstyr.
+ * Giver mulighed for at redigere eller aflyse bookinger via modaler.
+ * Opdaterer data i real-time via Supabase subscriptions. Viser loading states og fejlhåndtering.
+ */
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import dynamic from 'next/dynamic';
-import { Container, Title, Paper, Text, Group, Stack, Avatar, TextInput, Loader, Center } from '@mantine/core';
-import { IconChevronDown, IconCalendar } from '@tabler/icons-react';
+import { Container, Paper, Text, Stack, Loader, Center } from '@mantine/core';
 import '@mantine/dates/styles.css';
 
-// Dynamic import for at undgå hydration fejl
-const DatePickerInput = dynamic(
-  () => import('@mantine/dates').then((mod) => mod.DatePickerInput),
-  { ssr: false }
-);
 import { useUser } from '../contexts/UserContext';
 import { CancelBookingModal } from '../components/myBookings/CancelBookingModal';
 import { EditBookingModal } from '../components/myBookings/EditBookingModal';
 import { BookingRow } from '../components/myBookings/BookingRow';
+import { BookingsHeader } from '../components/myBookings/BookingsHeader';
+import { BookingsFilter } from '../components/myBookings/BookingsFilter';
+import { BookingsTableHeader } from '../components/myBookings/BookingsTableHeader';
+import { BookingsEmptyState } from '../components/myBookings/BookingsEmptyState';
 import { Booking } from '../components/myBookings/types';
+import { matchesDate, matchesSearch, convertSupabaseBookingToBooking, parseBookingDate } from '../components/myBookings/utils';
 import { supabase } from '../lib/supabaseClient';
 import louiseAvatar from '../img/louise.png';
 
-// Månedsnavne på dansk (bruges til dato formatering)
-const MONTH_NAMES = ['januar', 'februar', 'marts', 'april', 'maj', 'juni', 
-                     'juli', 'august', 'september', 'oktober', 'november', 'december'];
-
-/**
- * Tjekker om en booking matcher den valgte dato
- */
-function matchesDate(booking: Booking, dateValue: Date | null | string): boolean {
-  if (!dateValue) return true; // Vis alle hvis ingen dato valgt
-  
-  // Konverter til Date objekt hvis det ikke allerede er det
-  let date: Date;
-  if (dateValue instanceof Date) {
-    date = dateValue;
-  } else if (typeof dateValue === 'string') {
-    date = new Date(dateValue);
-    if (isNaN(date.getTime())) return true; // Hvis ugyldig dato, vis alle
-  } else {
-    return true; // Hvis ukendt type, vis alle
-  }
-  
-  const day = date.getDate();
-  const month = MONTH_NAMES[date.getMonth()];
-  
-  // Tjek om booking datoen indeholder både dagen og måneden
-  return booking.dato.includes(`${day}.`) && booking.dato.toLowerCase().includes(month);
-}
-
-/**
- * Tjekker om en booking matcher søgeteksten
- */
-function matchesSearch(booking: Booking, searchValue: string): boolean {
-  if (!searchValue) return true; // Vis alle hvis ingen søgetekst
-  
-  const search = searchValue.toLowerCase();
-  return booking.lokale.toLowerCase().includes(search) ||
-         booking.type.toLowerCase().includes(search) ||
-         booking.udstyr.toLowerCase().includes(search);
-}
-
-/**
- * Formaterer tid fra Date objekt til "HH:MM" format
- */
-function formatTime(date: Date): string {
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
-
-/**
- * Konverterer en booking fra Supabase format til Booking type
- */
-function convertSupabaseBookingToBooking(supabaseBooking: any): Booking {
-  const startDate = new Date(supabaseBooking.start_time);
-  const endDate = new Date(supabaseBooking.end_time);
-  
-  // Formater dato: "25. december, 2025"
-  const day = startDate.getDate();
-  const month = MONTH_NAMES[startDate.getMonth()];
-  const year = startDate.getFullYear();
-  const formattedDate = `${day}. ${month}, ${year}`;
-  
-  // Formater tid: "13:00-15:00"
-  const formattedTime = `${formatTime(startDate)}-${formatTime(endDate)}`;
-  
-  // Hent lokale information fra join
-  const room = supabaseBooking.rooms;
-  
-  return {
-    id: supabaseBooking.id,
-    lokale: room?.name || 'Ukendt lokale',
-    type: room?.type || 'Ukendt type',
-    dato: formattedDate,
-    tid: formattedTime,
-    udstyr: room?.features || 'Ingen',
-  };
-}
-
 export default function BookingPage() {
-  const { user, loading } = useUser();
-  
-  // State variabler
-  const [allBookings, setAllBookings] = useState<Booking[]>([]);
-  const [searchValue, setSearchValue] = useState('');
-  const [dateValue, setDateValue] = useState<Date | null>(null);
-  const [bookingsLoading, setBookingsLoading] = useState(true);
-  const [bookingsError, setBookingsError] = useState<string | null>(null);
-  const [cancelModalOpened, setCancelModalOpened] = useState(false);
-  const [editModalOpened, setEditModalOpened] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [isMounted, setIsMounted] = useState(false);
-  const [cancelLoading, setCancelLoading] = useState(false);
-  const [editLoading, setEditLoading] = useState(false);
-  const [editSuccess, setEditSuccess] = useState(false);
+  // ========================================
+  // 1. STATE MANAGEMENT
+  // ========================================
+  const { user, loading } = useUser(); // Henter brugerdata
+  const [allBookings, setAllBookings] = useState<Booking[]>([]); // Alle bookinger
+  const [searchValue, setSearchValue] = useState(''); // Søgetekst
+  const [dateValue, setDateValue] = useState<Date | null>(null); // Valgt dato
+  const [bookingsLoading, setBookingsLoading] = useState(true); // Loading state
+  const [bookingsError, setBookingsError] = useState<string | null>(null); // Fejlbesked
+  const [cancelModalOpened, setCancelModalOpened] = useState(false); // Cancel modal åben/lukket
+  const [editModalOpened, setEditModalOpened] = useState(false); // Edit modal åben/lukket
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null); // Valgt booking
+  const [isMounted, setIsMounted] = useState(false); // Forhindrer hydration fejl
+  const [cancelLoading, setCancelLoading] = useState(false); // Loading ved aflysning
+  const [editLoading, setEditLoading] = useState(false); // Loading ved redigering
+  const [editSuccess, setEditSuccess] = useState(false); // Success besked
 
-  // Sikrer at komponenten kun renderes på klienten (fix hydration fejl)
+  // ========================================
+  // 2. MOUNT EFFECT
+  // ========================================
   useEffect(() => {
-    setIsMounted(true);
+    setIsMounted(true); // Marker komponent som mounted
   }, []);
 
-  /**
-   * Henter alle bookinger for den aktuelle bruger fra Supabase
-   */
+  // ========================================
+  // 3. DATA FETCHING (fetchBookings)
+  // ========================================
+  // Henter bookinger fra Supabase
   const fetchBookings = useCallback(async () => {
     if (!supabase || !user?.id) {
       setBookingsLoading(false);
       return;
     }
-
     setBookingsLoading(true);
     setBookingsError(null);
-
     try {
-      // Hent bookinger med join til rooms tabel, filtreret på user_id
       const { data, error } = await supabase
         .from('bookings')
-        .select(`
-          id,
-          room_id,
-          start_time,
-          end_time,
-          user_id,
-          rooms (id, name, type, features)
-        `)
-        .eq('user_id', user.id)
-        .order('start_time', { ascending: true });
-
+        .select('id, room_id, start_time, end_time, user_id, rooms (id, name, type, features)')
+        .eq('user_id', user.id) // Kun denne brugers bookinger
+        .order('start_time', { ascending: true }); // Sorter efter start tid
+      
       if (error) throw error;
-
-      // Konverter til Booking type og filtrer gamle bookinger (kun vis bookinger hvor end_time er i fremtiden)
+      
       if (data) {
         const now = new Date();
         const convertedBookings = data
-          .filter((booking: any) => {
-            const endTime = new Date(booking.end_time);
-            return endTime >= now; // Kun vis bookinger der ikke er afsluttet
-          })
-          .map(convertSupabaseBookingToBooking);
+          .filter((b: any) => new Date(b.end_time) >= now) // Kun kommende bookinger
+          .map(convertSupabaseBookingToBooking); // Konverter format
         setAllBookings(convertedBookings);
       }
     } catch (err: unknown) {
-      console.error('Fejl ved hentning af bookinger:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Vi kunne desværre ikke hente dine bookinger lige nu. Prøv venligst igen senere';
-      setBookingsError(errorMessage);
+      setBookingsError(err instanceof Error ? err.message : 'Kunne ikke hente bookinger');
       setAllBookings([]);
     } finally {
       setBookingsLoading(false);
     }
   }, [user?.id]);
 
-  // Hent bookinger når bruger er logget ind
+  // ========================================
+  // 4. FETCH EFFECT - Henter bookinger når bruger er klar
+  // ========================================
+  // Henter bookinger når bruger er klar
   useEffect(() => {
     if (!loading && user?.id) {
-      fetchBookings();
+      fetchBookings(); // Hent bookinger hvis bruger er logget ind
     } else if (!loading && !user) {
-      setAllBookings([]);
+      setAllBookings([]); // Ryd bookinger hvis ikke logget ind
       setBookingsLoading(false);
     }
   }, [user?.id, loading, fetchBookings]);
 
-  // Opsæt real-time opdateringer (opdaterer automatisk når bookinger ændres)
+  // ========================================
+  // 5. REAL-TIME UPDATES - Supabase Realtime Subscription
+  // ========================================
+  // Real-time subscription - opdaterer automatisk ved ændringer
   useEffect(() => {
     if (!supabase || !user?.id) return;
-
     const channel = supabase
       .channel('bookings-changes')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'bookings',
-        filter: `user_id=eq.${user.id}`,
-      }, () => {
-        fetchBookings(); // Opdater når der sker ændringer
-      })
+      .on('postgres_changes', { 
+        event: '*', // Lytter til alle events
+        schema: 'public', 
+        table: 'bookings', 
+        filter: `user_id=eq.${user.id}` // Kun denne brugers bookinger
+      }, fetchBookings) // Opdater ved ændring
       .subscribe();
-
+    
     return () => {
       if (supabase) {
-        supabase.removeChannel(channel);
+        supabase.removeChannel(channel); // Ryd op ved unmount
       }
     };
   }, [user?.id, fetchBookings]);
 
+  // ========================================
+  // 6. FILTERING - Filtrerer bookinger baseret på søgning og dato
+  // ========================================
   // Filtrer bookinger baseret på søgning og dato
-  const filteredBookings = allBookings.filter(booking => 
-    matchesSearch(booking, searchValue) && matchesDate(booking, dateValue)
+  const filteredBookings = allBookings.filter(b => 
+    matchesSearch(b, searchValue) && matchesDate(b, dateValue)
   );
 
-  /**
-   * Åbner aflys modal med den valgte booking
-   */
-  const handleCancelBooking = (bookingId: string) => {
+  // ========================================
+  // 7. EVENT HANDLERS - Håndterer brugerinteraktioner
+  // ========================================
+  
+  // Åbner cancel modal
+  const handleCancelBooking = useCallback((bookingId: string) => {
     const booking = allBookings.find(b => b.id === bookingId);
     if (booking) {
-      setSelectedBooking(booking);
-      setCancelModalOpened(true);
+      setSelectedBooking(booking); // Gem valgt booking
+      setCancelModalOpened(true); // Åbn modal
     }
-  };
+  }, [allBookings]);
 
-  /**
-   * Åbner rediger modal med den valgte booking
-   */
-  const handleEditBooking = (bookingId: string) => {
+  // Åbner edit modal
+  const handleEditBooking = useCallback((bookingId: string) => {
     const booking = allBookings.find(b => b.id === bookingId);
     if (booking) {
-      setSelectedBooking(booking);
-      setEditModalOpened(true);
+      setSelectedBooking(booking); // Gem valgt booking
+      setEditModalOpened(true); // Åbn modal
     }
-  };
+  }, [allBookings]);
 
-  // Sletter booking fra Supabase
+  // ========================================
+  // 8. CANCEL BOOKING - Sletter booking fra databasen
+  // ========================================
+  // Sletter booking fra databasen
   const handleConfirmCancel = async () => {
     if (!selectedBooking || !supabase) return;
-
     setCancelLoading(true);
     try {
       const { error } = await supabase
         .from('bookings')
-        .delete()
+        .delete() // Slet booking
         .eq('id', selectedBooking.id);
-
+      
       if (error) throw error;
-
-      setAllBookings(prevBookings => prevBookings.filter(b => b.id !== selectedBooking.id));
-      setCancelModalOpened(false);
+      
+      setAllBookings(prev => prev.filter(b => b.id !== selectedBooking.id)); // Fjern fra state
+      setCancelModalOpened(false); // Luk modal
       setSelectedBooking(null);
     } catch (err: unknown) {
-      console.error('Fejl ved aflysning af booking:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Vi kunne desværre ikke aflyse din booking lige nu. Prøv venligst igen';
-      setBookingsError(errorMessage);
+      setBookingsError(err instanceof Error ? err.message : 'Kunne ikke aflyse booking');
     } finally {
       setCancelLoading(false);
     }
   };
 
-  // Opdaterer booking i Supabase med nye tider
+  // ========================================
+  // 9. EDIT BOOKING - Opdaterer booking tidspunkt i databasen
+  // ========================================
+  // Opdaterer booking tidspunkt
   const handleConfirmEdit = async (bookingId: string, newStartTime: string, newEndTime: string) => {
     if (!selectedBooking || !supabase) return;
-
     setEditLoading(true);
     setEditSuccess(false);
     setBookingsError(null);
-
     try {
       const originalBooking = allBookings.find(b => b.id === bookingId);
-      if (!originalBooking) throw new Error('Vi kunne ikke finde din booking. Prøv at opdatere siden');
-
-      const dateMatch = originalBooking.dato.match(/(\d+)\.\s*(\w+),\s*(\d+)/);
-      if (!dateMatch) throw new Error('Der opstod en fejl ved læsning af datoen. Prøv venligst igen');
-
-      const day = parseInt(dateMatch[1]);
-      const monthIndex = MONTH_NAMES.findIndex(m => m.toLowerCase() === dateMatch[2].toLowerCase());
-      const year = parseInt(dateMatch[3]);
-
-      if (monthIndex === -1) throw new Error('Den valgte måned er ikke gyldig. Prøv venligst igen');
-
-      const [startHours, startMinutes] = newStartTime.split(':').map(Number);
+      if (!originalBooking) throw new Error('Booking ikke fundet');
+      
+      const parsedDate = parseBookingDate(originalBooking.dato); // Parse dato
+      if (!parsedDate) throw new Error('Ugyldig dato');
+      
+      const [startHours, startMinutes] = newStartTime.split(':').map(Number); // Split tid
       const [endHours, endMinutes] = newEndTime.split(':').map(Number);
-      const newStartDateTime = new Date(year, monthIndex, day, startHours, startMinutes);
-      const newEndDateTime = new Date(year, monthIndex, day, endHours, endMinutes);
-
+      
+      // Kombiner dato + tid til Date objekter
+      const newStartDateTime = new Date(
+        parsedDate.year, 
+        parsedDate.monthIndex, 
+        parsedDate.day, 
+        startHours, 
+        startMinutes
+      );
+      const newEndDateTime = new Date(
+        parsedDate.year, 
+        parsedDate.monthIndex, 
+        parsedDate.day, 
+        endHours, 
+        endMinutes
+      );
+      
+      // Opdater i Supabase
       const { error } = await supabase
         .from('bookings')
-        .update({
-          start_time: newStartDateTime.toISOString(),
-          end_time: newEndDateTime.toISOString(),
+        .update({ 
+          start_time: newStartDateTime.toISOString(), 
+          end_time: newEndDateTime.toISOString() 
         })
         .eq('id', bookingId);
-
+      
       if (error) throw error;
-
-      setAllBookings(prevBookings =>
-        prevBookings.map(booking =>
-          booking.id === bookingId
-            ? { ...booking, tid: `${newStartTime}-${newEndTime}` }
-            : booking
-        )
-      );
-
+      
+      // Opdater lokal state
+      setAllBookings(prev => prev.map(b => 
+        b.id === bookingId 
+          ? { ...b, tid: `${newStartTime}-${newEndTime}` } 
+          : b
+      ));
+      
       setEditSuccess(true);
       setTimeout(() => {
-        setEditModalOpened(false);
+        setEditModalOpened(false); // Luk modal efter 1.5 sek
         setSelectedBooking(null);
         setEditSuccess(false);
       }, 1500);
     } catch (err: unknown) {
-      console.error('Fejl ved redigering af booking:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Vi kunne desværre ikke opdatere din booking lige nu. Prøv venligst igen';
-      setBookingsError(errorMessage);
+      setBookingsError(err instanceof Error ? err.message : 'Kunne ikke opdatere booking');
     } finally {
       setEditLoading(false);
     }
   };
 
-  // Vis loading mens data hentes
+  // ========================================
+  // 10. LOADING STATE - Viser loader mens data hentes
+  // ========================================
+  // Vis loader mens data hentes
   if (loading || bookingsLoading) {
     return (
       <Container size="xl" py="xl">
@@ -323,7 +254,10 @@ export default function BookingPage() {
     );
   }
 
-  // Vis fejl hvis der opstod en fejl
+  // ========================================
+  // 11. ERROR STATE - Viser fejlbesked hvis noget går galt
+  // ========================================
+  // Vis fejlbesked hvis noget går galt
   if (bookingsError) {
     return (
       <Container size="xl" py="xl">
@@ -334,113 +268,79 @@ export default function BookingPage() {
     );
   }
 
-  // Vælg profilbillede afhængigt af bruger (samme logik som i UserButton)
-  const headerAvatarSrc = (() => {
-    const name = user?.name?.toLowerCase() || '';
-    if (name.includes('louise')) {
-      return louiseAvatar.src;
-    }
-    return user?.avatarUrl || '/img/frederik.png';
-  })();
+  // ========================================
+  // 12. AVATAR LOGIK - Bestemmer hvilket avatar der skal vises
+  // ========================================
+  // Bestem avatar baseret på bruger navn
+  const headerAvatarSrc = user?.name?.toLowerCase().includes('louise') 
+    ? louiseAvatar.src 
+    : user?.avatarUrl || '/img/frederik.png';
 
+  // ========================================
+  // 13. UI RENDERING - Hovedkomponenten der vises
+  // ========================================
   return (
     <Container size="xl" py="xl">
-      {/* Header med bruger info */}
-      <Paper p="lg" mb="md" bg="gray.0" radius="md" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <Title order={1} size="h1" fw={700} c="#043055">Mine bookinger</Title>
-          <Text size="sm" c="dimmed" mt={4}>
-            {allBookings.length === 0 
-              ? 'Du har ingen bookinger' 
-              : `Du har ${allBookings.length} ${allBookings.length === 1 ? 'booking' : 'bookinger'}`}
-          </Text>
-        </div>
-        <Group gap="sm">
-          <Avatar src={headerAvatarSrc} radius="xl" size="md" alt={user?.name || 'Bruger'} />
-          <Text fw={700} size="md">{user?.name || 'Ikke logget ind'}</Text>
-        </Group>
-      </Paper>
+      {/* Header med titel og brugerinfo */}
+      <BookingsHeader 
+        user={user} 
+        totalBookings={allBookings.length} 
+        avatarSrc={headerAvatarSrc} 
+      />
 
-      {/* Søgning og filtrering */}
-      <Paper p="md" mb="md" bg="white" radius="md" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-        {isMounted ? (
-          <DatePickerInput
-            leftSection={<IconCalendar size={16} />}
-            placeholder="Vælg dato"
-            value={dateValue}
-            onChange={(value) => setDateValue(value as Date | null)}
-            rightSection={<IconChevronDown size={16} />}
-            style={{ flex: 1, maxWidth: '200px' }}
-          />
-        ) : (
-          <TextInput
-            leftSection={<IconCalendar size={16} />}
-            placeholder="Vælg dato"
-            rightSection={<IconChevronDown size={16} />}
-            style={{ flex: 1, maxWidth: '200px' }}
-            readOnly
-          />
-        )}
-        <TextInput 
-          placeholder="Søg i lokale, type eller udstyr..." 
-          value={searchValue} 
-          onChange={(e) => setSearchValue(e.currentTarget.value)} 
-          style={{ flex: 1 }} 
-        />
-      </Paper>
+      {/* Søge- og datofilter */}
+      <BookingsFilter
+        dateValue={dateValue}
+        onDateChange={setDateValue}
+        searchValue={searchValue}
+        onSearchChange={setSearchValue}
+        isMounted={isMounted}
+      />
 
-      {/* Tabel header */}
-      <Paper p="md" mb="md" bg="gray.0" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-        <Text fw={600} style={{ flex: 1, minWidth: '100px' }}>Lokale</Text>
-        <Text fw={600} style={{ flex: 1, minWidth: '120px' }}>Type</Text>
-        <Text fw={600} style={{ flex: 1, minWidth: '180px' }}>Dato</Text>
-        <Text fw={600} style={{ flex: 1, minWidth: '150px' }}>Tid</Text>
-        <Text fw={600} style={{ flex: 1, minWidth: '120px' }}>Udstyr</Text>
-        <div style={{ width: '200px' }}></div>
-      </Paper>
+      {/* Tabel overskrifter */}
+      <BookingsTableHeader />
 
-      {/* Booking liste */}
+      {/* Vis bookinger eller empty state */}
       {filteredBookings.length === 0 ? (
-        <Text c="dimmed" size="lg" mt="xl">
-          {allBookings.length === 0 
-            ? 'Du har ingen bookinger endnu.' 
-            : dateValue 
-              ? 'Der er ingen bookinger for denne dato.'
-              : 'Ingen bookinger matcher dine søgekriterier.'}
-        </Text>
+        <BookingsEmptyState 
+          hasBookings={allBookings.length > 0} // Har bookinger men filtreret væk
+          hasDateFilter={dateValue !== null} 
+        />
       ) : (
         <Stack gap="md">
           {filteredBookings.map(booking => (
             <BookingRow 
               key={booking.id} 
               booking={booking} 
-              onCancel={handleCancelBooking}
-              onEdit={handleEditBooking}
+              onCancel={handleCancelBooking} // Åbner cancel modal
+              onEdit={handleEditBooking} // Åbner edit modal
             />
           ))}
         </Stack>
       )}
 
-      {/* Modals til aflysning og redigering */}
+      {/* Cancel modal */}
       <CancelBookingModal 
         opened={cancelModalOpened} 
-        onClose={() => {
-          setCancelModalOpened(false);
-          setSelectedBooking(null);
+        onClose={() => { 
+          setCancelModalOpened(false); 
+          setSelectedBooking(null); 
         }}
         booking={selectedBooking}
-        onConfirm={handleConfirmCancel}
+        onConfirm={handleConfirmCancel} // Sletter booking
         loading={cancelLoading}
       />
+      
+      {/* Edit modal */}
       <EditBookingModal
         opened={editModalOpened}
-        onClose={() => {
-          setEditModalOpened(false);
-          setSelectedBooking(null);
-          setEditSuccess(false);
+        onClose={() => { 
+          setEditModalOpened(false); 
+          setSelectedBooking(null); 
+          setEditSuccess(false); 
         }}
         booking={selectedBooking}
-        onConfirm={handleConfirmEdit}
+        onConfirm={handleConfirmEdit} // Opdaterer booking
         loading={editLoading}
         error={bookingsError}
         success={editSuccess}

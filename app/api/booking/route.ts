@@ -1,4 +1,3 @@
-// app/api/booking/route.ts
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "../../lib/supabaseAdmin";
 
@@ -7,61 +6,41 @@ export async function POST(req: Request) {
     let body;
     try {
       body = await req.json();
-    } catch (parseError) {
-      console.error("JSON parse fejl:", parseError);
-      return NextResponse.json({ 
-        error: 'Ugyldig data modtaget. Prøv venligst igen.' 
-      }, { status: 400 });
+    } catch {
+      return NextResponse.json({ error: 'Ugyldig data' }, { status: 400 });
     }
 
-    console.log("body", body);
-
-    // Valider at påkrævede felter er til stede
     if (!body.room_id || !body.start_time || !body.end_time) {
-      return NextResponse.json({ 
-        error: 'Manglende påkrævede oplysninger. Prøv venligst igen.' 
-      }, { status: 400 });
+      return NextResponse.json({ error: 'Manglende data' }, { status: 400 });
     }
 
     let supabase;
     try {
       supabase = getSupabaseAdmin();
-    } catch (adminError) {
-      console.error("Supabase admin fejl:", adminError);
-      return NextResponse.json({ 
-        error: 'Systemet er ikke konfigureret korrekt. Kontakt venligst support.' 
-      }, { status: 500 });
+    } catch {
+      return NextResponse.json({ error: 'Systemet ikke konfigureret' }, { status: 500 });
     }
 
     const { data, error } = await supabase
       .from("bookings")
-      .insert({
-        room_id: body.room_id,
-        start_time: body.start_time,
-        end_time: body.end_time,
-        user_id: body.user_id || null,
-      })
+      .insert({ room_id: body.room_id, start_time: body.start_time, end_time: body.end_time, user_id: body.user_id || null })
       .select()
       .single();
 
     if (error) {
-      console.error("Supabase insert fejl:", error);
       const userMessage = error.message.includes('duplicate') || error.message.includes('unique')
-        ? 'Denne booking eksisterer allerede. Prøv venligst med et andet tidspunkt.'
+        ? 'Booking eksisterer allerede'
         : error.message.includes('overlap') || error.message.includes('conflict')
-        ? 'Lokalet er desværre allerede booket i det valgte tidsrum. Prøv et andet tidspunkt.'
+        ? 'Lokalet er allerede booket'
         : error.message.includes('permission') || error.message.includes('policy')
-        ? 'Du har ikke tilladelse til at oprette denne booking. Kontakt venligst support.'
-        : `Der opstod en fejl ved oprettelse af booking: ${error.message}. Prøv venligst igen.`;
+        ? 'Ingen tilladelse'
+        : `Fejl: ${error.message}`;
       return NextResponse.json({ error: userMessage }, { status: 400 });
     }
 
     return NextResponse.json({ booking: data });
   } catch (err: unknown) {
-    console.error("/api/booking POST error:", err);
-    const message = err instanceof Error 
-      ? err.message 
-      : 'Der opstod en uventet fejl. Prøv venligst igen';
+    const message = err instanceof Error ? err.message : 'Uventet fejl';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -72,14 +51,10 @@ export async function PATCH(req: Request) {
     const { bookingId, start_time, end_time } = body;
 
     if (!bookingId) {
-      return NextResponse.json({ error: "Booking ID mangler. Prøv venligst igen" }, { status: 400 });
+      return NextResponse.json({ error: "Booking ID mangler" }, { status: 400 });
     }
 
-    console.log("PATCH request for booking ID:", bookingId);
-
     const supabase = getSupabaseAdmin();
-
-    // First check if booking exists
     const { data: existingBooking, error: checkError } = await supabase
       .from("bookings")
       .select("id, room_id")
@@ -87,10 +62,9 @@ export async function PATCH(req: Request) {
       .single();
 
     if (checkError || !existingBooking) {
-      return NextResponse.json({ error: "Vi kunne ikke finde den valgte booking. Prøv venligst igen" }, { status: 404 });
+      return NextResponse.json({ error: "Booking ikke fundet" }, { status: 404 });
     }
 
-    // Update the booking
     const updateData: { start_time?: string; end_time?: string } = {};
     if (start_time) updateData.start_time = start_time;
     if (end_time) updateData.end_time = end_time;
@@ -103,17 +77,15 @@ export async function PATCH(req: Request) {
       .single();
 
     if (error) {
-      console.error("Update error:", error);
       const userMessage = error.message.includes('overlap') || error.message.includes('conflict')
-        ? 'Lokalet er allerede booket i det valgte tidsrum'
-        : 'Der opstod en fejl ved opdatering af booking. Prøv venligst igen';
+        ? 'Lokalet er allerede booket'
+        : 'Fejl ved opdatering';
       return NextResponse.json({ error: userMessage }, { status: 400 });
     }
 
     return NextResponse.json({ success: true, updated: data });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Der opstod en uventet fejl. Prøv venligst igen';
-    console.error("/api/booking PATCH error:", err);
+    const message = err instanceof Error ? err.message : 'Uventet fejl';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -124,14 +96,10 @@ export async function DELETE(req: Request) {
     const bookingId = searchParams.get("id");
 
     if (!bookingId) {
-      return NextResponse.json({ error: "Booking ID mangler. Prøv venligst igen" }, { status: 400 });
+      return NextResponse.json({ error: "Booking ID mangler" }, { status: 400 });
     }
 
-    console.log("DELETE request for booking ID:", bookingId);
-
     const supabase = getSupabaseAdmin();
-
-    // First check if booking exists and get its details
     const { data: existingBooking, error: checkError } = await supabase
       .from("bookings")
       .select("id, room_id")
@@ -139,57 +107,21 @@ export async function DELETE(req: Request) {
       .single();
 
     if (checkError || !existingBooking) {
-      console.log("Booking not found or check error:", checkError);
-      return NextResponse.json({ error: "Vi kunne ikke finde den valgte booking. Prøv venligst igen" }, { status: 404 });
+      return NextResponse.json({ error: "Booking ikke fundet" }, { status: 404 });
     }
 
-    console.log("Booking found, attempting deletion:", existingBooking);
-
-    // Delete the booking using service role (bypasses RLS)
-    // Note: Service role key should have "role": "service_role" in JWT
-    const { data: deleteData, error: deleteError } = await supabase
+    const { error: deleteError } = await supabase
       .from("bookings")
       .delete()
-      .eq("id", bookingId)
-      .select();
-
-    console.log("Delete result:", { deleteData, deleteError });
-
-    // Check if service role is actually being used
-    if (deleteError && (deleteError.message?.includes("permission") || deleteError.message?.includes("policy"))) {
-      console.error("RLS policy blocking deletion. Service role key may not be configured correctly.");
-      console.error("Make sure SUPABASE_SERVICE_ROLE_KEY has 'role': 'service_role' in the JWT token");
-    }
+      .eq("id", bookingId);
 
     if (deleteError) {
-      console.error("Delete error:", deleteError);
-      return NextResponse.json({ error: 'Vi kunne desværre ikke slette din booking lige nu. Prøv venligst igen' }, { status: 400 });
+      return NextResponse.json({ error: 'Kunne ikke slette booking' }, { status: 400 });
     }
 
-    // Verify deletion by checking if it still exists
-    const { data: verifyData, error: verifyError } = await supabase
-      .from("bookings")
-      .select("id")
-      .eq("id", bookingId)
-      .maybeSingle();
-
-    console.log("Verification after delete:", { verifyData, verifyError });
-
-    if (verifyData) {
-      console.error("Booking still exists after deletion - RLS policy may be blocking");
-      return NextResponse.json({
-        error: "Vi kunne desværre ikke slette din booking. Kontakt venligst support hvis problemet fortsætter"
-      }, { status: 500 });
-    }
-
-    // If no error and verification shows it's gone, deletion was successful
-    return NextResponse.json({
-      success: true,
-      deleted: { id: bookingId, room_id: existingBooking.room_id }
-    });
+    return NextResponse.json({ success: true, deleted: { id: bookingId, room_id: existingBooking.room_id } });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Der opstod en uventet fejl. Prøv venligst igen';
-    console.error("/api/booking DELETE error:", err);
+    const message = err instanceof Error ? err.message : 'Uventet fejl';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -201,48 +133,29 @@ export async function GET(req: Request) {
     const user_id = searchParams.get("user_id");
     const date = searchParams.get("date");
 
-    console.log("GET request with params:", { room_id, user_id, date });
-
     const supabase = getSupabaseAdmin();
-
     let query = supabase.from("bookings").select("*");
 
-    // Filtrer på room_id hvis angivet
-    if (room_id) {
-      query = query.eq("room_id", room_id);
-    }
-
-    // Filtrer på user_id hvis angivet
-    if (user_id) {
-      query = query.eq("user_id", user_id);
-    }
-
-    // Filtrer på dato hvis angivet
+    if (room_id) query = query.eq("room_id", room_id);
+    if (user_id) query = query.eq("user_id", user_id);
     if (date) {
       const startOfDay = new Date(date);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(date);
       endOfDay.setHours(23, 59, 59, 999);
-
-      query = query
-        .gte("start_time", startOfDay.toISOString())
-        .lte("start_time", endOfDay.toISOString());
+      query = query.gte("start_time", startOfDay.toISOString()).lte("start_time", endOfDay.toISOString());
     }
 
-    // Sorter efter start_time
     query = query.order("start_time", { ascending: true });
-
     const { data, error } = await query;
 
     if (error) {
-      console.error("Get error:", error);
-      return NextResponse.json({ error: 'Vi kunne desværre ikke hente bookingerne lige nu. Prøv venligst igen senere' }, { status: 400 });
+      return NextResponse.json({ error: 'Kunne ikke hente bookinger' }, { status: 400 });
     }
 
     return NextResponse.json({ bookings: data || [] });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Der opstod en uventet fejl. Prøv venligst igen';
-    console.error("/api/booking GET error:", err);
+    const message = err instanceof Error ? err.message : 'Uventet fejl';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

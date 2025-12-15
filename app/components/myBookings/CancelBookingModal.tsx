@@ -1,7 +1,11 @@
-// components/myBookings/CancelBookingModal.tsx
+/**
+ * CancelBookingModal - Bekræftelsesdialog til aflysning af bookinger
+ * 
+ * Viser booking detaljer (lokale, dato, tid, udstyr) og beder brugeren om bekræftelse
+ * før booking aflyses. Håndterer loading state under aflysning.
+ */
 'use client';
 
-// Modal til at bekræfte aflysning af en booking
 import { Modal, Text, Button, Stack, Group } from '@mantine/core';
 import { Booking } from './types';
 import { formatDate, splitEquipment, formatRoomInfo } from './utils';
@@ -15,13 +19,13 @@ interface CancelBookingModalProps {
 }
 
 export function CancelBookingModal({ opened, onClose, booking, onConfirm, loading = false }: CancelBookingModalProps) {
-  if (!booking) return null;
-
+  // ========================================
+  // CANCEL BOOKING MODAL - Bekræftelsesdialog til aflysning
+  // ========================================
+  if (!booking) return null; // Vis ikke modal hvis ingen booking valgt
+  
+  // Parser udstyr string til liste (fx "Projektor, Whiteboard" -> ["Projektor", "Whiteboard"])
   const equipmentItems = splitEquipment(booking.udstyr);
-
-  const handleConfirm = () => {
-    onConfirm();
-  };
 
   return (
     <Modal
@@ -39,6 +43,7 @@ export function CancelBookingModal({ opened, onClose, booking, onConfirm, loadin
           Bekræft aflysning?
         </Text>
         
+        {/* Viser booking detaljer */}
         <Stack gap="xs">
           <Text size="sm" c="dark">
             {formatRoomInfo(booking)}
@@ -49,6 +54,7 @@ export function CancelBookingModal({ opened, onClose, booking, onConfirm, loadin
           <Text size="sm" c="dark">
             {booking.tid}
           </Text>
+          {/* Viser udstyr som liste */}
           {equipmentItems.map((item, index) => (
             <Text key={index} size="sm" c="dark">
               + {item}
@@ -56,6 +62,7 @@ export function CancelBookingModal({ opened, onClose, booking, onConfirm, loadin
           ))}
         </Stack>
 
+        {/* Bekræftelses knapper */}
         <Group gap="md" mt="md">
           <Button
             color="#043055"
@@ -66,13 +73,7 @@ export function CancelBookingModal({ opened, onClose, booking, onConfirm, loadin
           >
             Nej, gå tilbage
           </Button>
-          <Button
-            color="#228BE6"
-            style={{ flex: 1 }}
-            size="md"
-            onClick={handleConfirm}
-            loading={loading}
-          >
+          <Button color="#228BE6" style={{ flex: 1 }} size="md" onClick={onConfirm} loading={loading}>
             {loading ? 'Aflyser...' : 'Ja, bekræft'}
           </Button>
         </Group>

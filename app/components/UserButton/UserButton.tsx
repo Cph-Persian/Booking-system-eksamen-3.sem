@@ -1,3 +1,9 @@
+/**
+ * UserButton - Bruger profil knap med dropdown menu
+ * 
+ * Viser brugerens avatar og navn. Ved klik åbnes en dropdown menu med konto info
+ * og logout funktion. Håndterer logout og redirecter til login siden.
+ */
 'use client';
 
 import { useState } from 'react';
@@ -9,21 +15,23 @@ import classes from './UserButton.module.css';
 import louiseAvatar from '../../img/louise.png';
 
 export function UserButton() {
+  // ========================================
+  // 1. STATE MANAGEMENT
+  // ========================================
   const router = useRouter();
   const { user, logout } = useUser();
   const [opened, setOpened] = useState(false);
 
-  // Vælg profilbillede afhængigt af bruger
-  // - Hvis det er Louise → brug louise-billede
-  // - Ellers brug avatarUrl fra databasen eller standard Frederik-billede
-  const avatarSrc = (() => {
-    const name = user?.name?.toLowerCase() || '';
-    if (name.includes('louise')) {
-      return louiseAvatar.src;
-    }
-    return user?.avatarUrl || '/img/frederik.png';
-  })();
+  // ========================================
+  // 2. AVATAR LOGIK - Bestemmer hvilket avatar der skal vises
+  // ========================================
+  const avatarSrc = user?.name?.toLowerCase().includes('louise') 
+    ? louiseAvatar.src 
+    : user?.avatarUrl || '/img/frederik.png';
 
+  // ========================================
+  // 3. LOGOUT HANDLER - Logger bruger ud og redirecter til login
+  // ========================================
   const handleLogout = async () => {
     try {
       await logout();
@@ -41,6 +49,7 @@ export function UserButton() {
       opened={opened}
       onChange={setOpened}
     >
+      {/* Menu trigger - Bruger knap med avatar og navn */}
       <Menu.Target>
         <UnstyledButton className={classes.user}>
           <Group>
@@ -62,6 +71,7 @@ export function UserButton() {
         </UnstyledButton>
       </Menu.Target>
 
+      {/* Dropdown menu med konto info og logout */}
       <Menu.Dropdown>
         <Menu.Label>Konto</Menu.Label>
         <Menu.Item

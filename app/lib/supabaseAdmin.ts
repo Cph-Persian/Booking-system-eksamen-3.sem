@@ -1,7 +1,3 @@
-// app/lib/supabaseAdmin.ts
-// Supabase Admin Client - Server-side only
-// Bruger service role key for fuld database adgang
-
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 export function getSupabaseAdmin(): SupabaseClient {
@@ -9,14 +5,11 @@ export function getSupabaseAdmin(): SupabaseClient {
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase admin credentials mangler. Tjek environment variabler: NEXT_PUBLIC_SUPABASE_URL og SUPABASE_SERVICE_ROLE_KEY');
+    throw new Error('Supabase admin credentials mangler');
   }
 
   return createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
+    auth: { autoRefreshToken: false, persistSession: false },
   });
 }
 

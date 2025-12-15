@@ -1,5 +1,3 @@
-// app/components/useRoomAvailability.ts
-// Hook der beregner status for hvert lokale baseret på bookinger
 type Room = {
   id: string;
   name: string;
@@ -20,7 +18,6 @@ type Booking = {
   user_id?: string;
 };
 
-// Type for lokale med beregnet status
 type RoomWithStatus = Room & {
   computedStatus: 'Ledig' | 'Optaget' | 'Kommende';
   statusColor: 'green' | 'red' | 'yellow';
@@ -29,72 +26,32 @@ type RoomWithStatus = Room & {
 
 type BookingsByRoom = { [roomId: string]: Booking[] };
 
-export function useRoomAvailability(
-  roomsRaw: Room[],
-  bookingsByRoom: BookingsByRoom
-): RoomWithStatus[] {
+export function useRoomAvailability(roomsRaw: Room[], bookingsByRoom: BookingsByRoom): RoomWithStatus[] {
   const now = new Date();
-  
-  // Hjælpefunktion til at formatere tid
-  const formatTime = (date: Date) => 
-    date.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' });
+  const formatTime = (date: Date) => date.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' });
 
   return roomsRaw.map((room) => {
     const roomBookings = bookingsByRoom[room.id] || [];
-
-    // Hvis ingen bookinger → lokale er ledigt
     if (roomBookings.length === 0) {
-      return {
-        ...room,
-        computedStatus: 'Ledig',
-        statusColor: 'green',
-        infoText: 'Ingen kommende bookinger',
-      };
+      return { ...room, computedStatus: 'Ledig' as const, statusColor: 'green' as const, infoText: 'Ingen kommende bookinger' };
     }
-
-    // Få næste booking
     const nextBooking = roomBookings[0];
     const bookingStart = new Date(nextBooking.start_time);
     const bookingEnd = new Date(nextBooking.end_time);
     const minutesUntilEnd = Math.max(0, Math.round((bookingEnd.getTime() - now.getTime()) / 60000));
 
-    // Lokale er optaget lige nu
     if (bookingStart <= now && bookingEnd > now) {
-      // Hvis der er 20 min eller mindre til det er frit → "Kommende"
       if (minutesUntilEnd <= 20) {
-        return {
-          ...room,
-          computedStatus: 'Kommende',
-          statusColor: 'yellow',
-          infoText: `Bliver ledigt om ${minutesUntilEnd} min`,
-        };
+        return { ...room, computedStatus: 'Kommende' as const, statusColor: 'yellow' as const, infoText: `Bliver ledigt om ${minutesUntilEnd} min` };
       }
-      // Ellers "Optaget"
-      return {
-        ...room,
-        computedStatus: 'Optaget',
-        statusColor: 'red',
-        infoText: `Optaget til kl. ${formatTime(bookingEnd)}`,
-      };
+      return { ...room, computedStatus: 'Optaget' as const, statusColor: 'red' as const, infoText: `Optaget til kl. ${formatTime(bookingEnd)}` };
     }
 
-    // Næste booking er i fremtiden → lokale er ledigt nu
     if (bookingStart > now) {
       const minutesUntilNext = Math.max(0, Math.round((bookingStart.getTime() - now.getTime()) / 60000));
-      return {
-        ...room,
-        computedStatus: 'Ledig',
-        statusColor: 'green',
-        infoText: `Ledig de næste ${minutesUntilNext} min (indtil kl. ${formatTime(bookingStart)})`,
-      };
+      return { ...room, computedStatus: 'Ledig' as const, statusColor: 'green' as const, infoText: `Ledig de næste ${minutesUntilNext} min (indtil kl. ${formatTime(bookingStart)})` };
     }
 
-    // Fallback
-    return {
-      ...room,
-      computedStatus: 'Ledig',
-      statusColor: 'green',
-      infoText: 'Ingen aktuelle bookinger',
-    };
+    return { ...room, computedStatus: 'Ledig' as const, statusColor: 'green' as const, infoText: 'Ingen aktuelle bookinger' };
   });
 }

@@ -1,3 +1,10 @@
+/**
+ * NavbarNested - Sidebar navigation komponent med links og bruger menu
+ * 
+ * Viser sidebar navigation med links til hovedside, mine bookinger og booking modal.
+ * Kan åbnes/lukkes via toggle knap. Viser logo, navigation links og UserButton i footer.
+ * Viser floating toggle knap når navbar er lukket.
+ */
 'use client';
 
 import { useState } from 'react';
@@ -23,9 +30,16 @@ const mockdata = [
 ];
 
 export function NavbarNested() {
+  // ========================================
+  // 1. STATE MANAGEMENT
+  // ========================================
   const { isOpen, toggle } = useNavbar();
   const [modalOpened, setModalOpened] = useState(false);
 
+  // ========================================
+  // 2. NAVIGATION LINKS - Mapper navigation links
+  // ========================================
+  // Håndterer både links og modaler
   const links = mockdata.map((item) => {
     if (item.isModal) {
       return (
@@ -46,8 +60,10 @@ export function NavbarNested() {
           <Group gap="sm" justify="space-between">
             <Group gap="sm">
               <Logo style={{ width: 40 }} />
+              {/* Viser titel kun når navbar er åben */}
               {isOpen && <Text fw={700} size="lg" c="#0038A7">EK Lokaler</Text>}
             </Group>
+            {/* Toggle knap til at åbne/lukke navbar */}
             <Button
               variant="subtle"
               onClick={toggle}
@@ -59,6 +75,7 @@ export function NavbarNested() {
           </Group>
         </div>
 
+        {/* Viser navigation links og user button kun når navbar er åben */}
         {isOpen && (
           <>
             <ScrollArea className={classes.links}>
@@ -71,6 +88,7 @@ export function NavbarNested() {
           </>
         )}
       </nav>
+      {/* Floating toggle knap når navbar er lukket */}
       {!isOpen && (
         <Button
           variant="filled"
@@ -85,6 +103,7 @@ export function NavbarNested() {
           <IconMenu2 size={20} />
         </Button>
       )}
+      {/* Booking modal fra navigation */}
       <BookingModal opened={modalOpened} onClose={() => setModalOpened(false)} />
     </>
   );

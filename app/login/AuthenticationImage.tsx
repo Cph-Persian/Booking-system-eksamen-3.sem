@@ -10,6 +10,9 @@ import {
   } from '@mantine/core';
   import classes from './AuthenticationImage.module.css';
   
+  // ========================================
+  // AUTHENTICATION IMAGE - Placeholder komponent (ikke i brug)
+  // ========================================
   export function AuthenticationImage() {
     return (
       <div className={classes.wrapper}>

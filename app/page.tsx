@@ -1,3 +1,11 @@
+/**
+ * Home Page - Hovedside der viser alle tilgængelige lokaler
+ * 
+ * Henter lokaler og bookinger fra Supabase og viser dem i et grid layout.
+ * Beregner automatisk status for hvert lokale baseret på eksisterende bookinger.
+ * Tillader hurtig booking via QuickBookingModal. Opdaterer data i real-time via Supabase subscriptions.
+ * Redirecter til login hvis bruger ikke er autentificeret.
+ */
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
@@ -31,29 +39,40 @@ type Booking = {
 };
 
 export default function Home() {
+  // ========================================
+  // 1. STATE MANAGEMENT
+  // ========================================
   const router = useRouter();
   const { user, loading: userLoading } = useUser();
   
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [quickBookingModalOpened, setQuickBookingModalOpened] = useState(false);
-  const [selectedRoomForQuickBooking, setSelectedRoomForQuickBooking] = useState<Room | null>(null);
+  const [rooms, setRooms] = useState<Room[]>([]); // Alle lokaler
+  const [bookings, setBookings] = useState<Booking[]>([]); // Alle bookinger
+  const [loading, setLoading] = useState(true); // Loading state
+  const [error, setError] = useState<string | null>(null); // Fejlbesked
+  const [quickBookingModalOpened, setQuickBookingModalOpened] = useState(false); // Quick booking modal åben/lukket
+  const [selectedRoomForQuickBooking, setSelectedRoomForQuickBooking] = useState<Room | null>(null); // Valgt lokale til booking
 
+  // ========================================
+  // 2. AUTHENTICATION CHECK - Redirect hvis ikke logget ind
+  // ========================================
   useEffect(() => {
-    if (!userLoading && !user) router.push('/login');
+    if (!userLoading && !user) router.push('/login'); // Redirect til login hvis ikke logget ind
   }, [user, userLoading, router]);
 
+  // ========================================
+  // 3. BOOKINGS GROUPING - Grupperer bookinger efter lokale
+  // ========================================
+  // Grupperer bookinger efter room_id og filtrerer kun kommende bookinger
   const bookingsByRoom = useMemo(() => {
     const grouped: { [roomId: string]: Booking[] } = {};
     const now = new Date();
     bookings.forEach(booking => {
-      if (new Date(booking.end_time) >= now) {
+      if (new Date(booking.end_time) >= now) { // Kun kommende bookinger
         if (!grouped[booking.room_id]) grouped[booking.room_id] = [];
         grouped[booking.room_id].push(booking);
       }
     });
+    // Sorter bookinger efter starttidspunkt
     Object.keys(grouped).forEach(roomId => {
       grouped[roomId].sort((a, b) => 
         new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
@@ -62,8 +81,15 @@ export default function Home() {
     return grouped;
   }, [bookings]);
 
+  // ========================================
+  // 4. ROOM STATUS CALCULATION - Beregner status for hvert lokale
+  // ========================================
+  // Bruger custom hook til at beregne status baseret på bookinger
   const roomsWithStatus = useRoomAvailability(rooms, bookingsByRoom);
 
+  // ========================================
+  // 5. DATA FETCHING - Henter lokaler og bookinger fra Supabase
+  // ========================================
   useEffect(() => {
     if (!supabase) {
       setError('Systemet er ikke konfigureret korrekt. Kontakt venligst support');
@@ -71,56 +97,72 @@ export default function Home() {
       return;
     }
 
-    const supabaseClient = supabase;
+    // Henter både lokaler og bookinger parallelt
     const fetchData = async () => {
-      if (!supabaseClient) return;
+      if (!supabase) return;
       try {
+        // Henter både lokaler og bookinger parallelt for bedre performance
         const [roomsResult, bookingsResult] = await Promise.all([
-          supabaseClient.from('rooms').select('*').order('name'),
-          supabaseClient.from('bookings').select('*').order('start_time'),
+          supabase.from('rooms').select('*').order('name'),
+          supabase.from('bookings').select('*').order('start_time'),
         ]);
         if (roomsResult.error) {
-          setError('Vi kunne desværre ikke hente lokalerne lige nu. Prøv venligst igen senere');
+          setError('Kunne ikke hente lokaler');
         } else {
           setRooms((roomsResult.data as Room[]) || []);
         }
-        if (bookingsResult.error) {
-          setBookings([]);
-        } else {
-          setBookings((bookingsResult.data as Booking[]) || []);
+        if (!bookingsResult.error && bookingsResult.data) {
+          setBookings(bookingsResult.data as Booking[]);
         }
       } catch (err) {
-        setError('Der opstod en uventet fejl ved hentning af data. Prøv venligst igen senere');
+        setError('Fejl ved hentning af data');
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-    if (!supabaseClient) return;
-    const roomsChannel = supabaseClient.channel('rooms-changes')
+    
+    // ========================================
+    // 6. REAL-TIME UPDATES - Supabase Realtime Subscription
+    // ========================================
+    // Lytter til ændringer i både rooms og bookings tabeller
+    const client = supabase;
+    if (!client) return;
+    // Opretter separate channels for rooms og bookings
+    const roomsChannel = client.channel('rooms-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, fetchData)
       .subscribe();
-    const bookingsChannel = supabaseClient.channel('bookings-changes')
+    const bookingsChannel = client.channel('bookings-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, fetchData)
       .subscribe();
+    
     return () => {
-      supabaseClient.removeChannel(roomsChannel);
-      supabaseClient.removeChannel(bookingsChannel);
+      client.removeChannel(roomsChannel);
+      client.removeChannel(bookingsChannel);
     };
   }, []);
 
+  // ========================================
+  // 7. EVENT HANDLERS - Håndterer brugerinteraktioner
+  // ========================================
+  
+  // Åbner quick booking modal med valgt lokale
   const handleQuickBook = (room: Room) => {
-    setSelectedRoomForQuickBooking(room);
-    setQuickBookingModalOpened(true);
+    setSelectedRoomForQuickBooking(room); // Gem valgt lokale
+    setQuickBookingModalOpened(true); // Åbn modal
   };
 
+  // Opdaterer bookinger efter succesfuld booking
   const handleBookingSuccess = async () => {
     if (!supabase) return;
     const { data } = await supabase.from('bookings').select('*').order('start_time');
-    if (data) setBookings(data as Booking[]);
+    if (data) setBookings(data as Booking[]); // Opdater bookings state
   };
 
+  // ========================================
+  // 8. LOADING STATE - Viser loader mens data hentes
+  // ========================================
   if (userLoading || loading) {
     return (
       <Container size="xl" py="xl">
@@ -132,10 +174,16 @@ export default function Home() {
     );
   }
 
+  // ========================================
+  // 9. AUTHENTICATION CHECK - Returner null hvis ikke logget ind
+  // ========================================
   if (!user) {
     return null;
   }
 
+  // ========================================
+  // 10. ERROR STATE - Viser fejlbesked hvis noget går galt
+  // ========================================
   if (error) {
     return (
       <Container size="xl" py="xl">
@@ -146,6 +194,9 @@ export default function Home() {
     );
   }
 
+  // ========================================
+  // 11. EMPTY STATE - Viser besked hvis ingen lokaler
+  // ========================================
   if (rooms.length === 0) {
     return (
       <Container size="xl" py="xl">
@@ -156,9 +207,13 @@ export default function Home() {
     );
   }
 
+  // ========================================
+  // 12. UI RENDERING - Hovedkomponenten der vises
+  // ========================================
   return (
     <>
       <Container size="xl" py="xl">
+        {/* Grid layout - Responsive: 1 kolonne på mobil, 2 på tablet, 3 på desktop */}
         <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="lg">
           {roomsWithStatus.map((room) => (
             <LokaleCard
@@ -177,6 +232,7 @@ export default function Home() {
         </SimpleGrid>
       </Container>
 
+      {/* Quick booking modal - Vises kun hvis lokale er valgt */}
       {selectedRoomForQuickBooking && (
         <QuickBookingModal
           opened={quickBookingModalOpened}

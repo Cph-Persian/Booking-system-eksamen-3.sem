@@ -90,32 +90,27 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
   }, [rooms, bookings, date, startTime, endTime]);
 
   const validateBooking = (): string | null => {
-    if (!date) return 'Vælg venligst en dato for din booking.';
+    if (!date) return 'Vælg en dato';
     const dateObj = getDateObj(date);
-    if (!dateObj) return 'Den valgte dato er ikke gyldig. Prøv venligst igen.';
-    if (!startTime) return 'Vælg venligst en starttid for din booking.';
-    if (!endTime) return 'Vælg venligst en sluttid for din booking.';
-    if (!selectedRoomId) return 'Vælg venligst et lokale at booke.';
-    
+    if (!dateObj) return 'Ugyldig dato';
+    if (!startTime || !endTime) return 'Vælg både start- og sluttid';
+    if (!selectedRoomId) return 'Vælg et lokale';
     const startDateTime = timeStringToDate(startTime, dateObj);
     const endDateTime = timeStringToDate(endTime, dateObj);
-    if (!startDateTime || !endDateTime) return 'Den valgte tid er ikke gyldig. Prøv venligst igen.';
-    if (endDateTime <= startDateTime) return 'Sluttiden skal være efter starttiden. Juster venligst tiderne.';
-    
+    if (!startDateTime || !endDateTime) return 'Ugyldig tid';
+    if (endDateTime <= startDateTime) return 'Sluttid skal være efter starttid';
     const [, startMinutes] = startTime.split(':').map(Number);
     const [, endMinutes] = endTime.split(':').map(Number);
     if ((startMinutes !== 0 && startMinutes !== 30) || (endMinutes !== 0 && endMinutes !== 30)) {
-      return 'Bookinger skal starte og slutte på hele eller halve timer (f.eks. 09:00, 09:30, 10:00).';
+      return 'Kun halve eller hele timer';
     }
-    
     const durationMinutes = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60);
-    if (durationMinutes > 120) return 'Du kan maksimalt booke et lokale i 2 timer. Juster venligst varigheden.';
-    
+    if (durationMinutes > 120) return 'Maksimal varighed er 2 timer';
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const selectedDate = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
     if (selectedDate.getTime() === today.getTime() && startDateTime < now) {
-      return 'Du kan ikke booke et lokale i fortiden. Vælg venligst et fremtidigt tidspunkt.';
+      return 'Kan ikke booke i fortiden';
     }
     return null;
   };
@@ -163,13 +158,13 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
 
       if (insertError) {
         if (insertError.message.includes('duplicate') || insertError.message.includes('unique')) {
-          throw new Error('Denne booking eksisterer allerede. Prøv venligst med et andet tidspunkt.');
+          throw new Error('Booking eksisterer allerede');
         } else if (insertError.message.includes('permission') || insertError.message.includes('policy')) {
-          throw new Error('Du har ikke tilladelse til at oprette denne booking. Kontakt venligst support.');
+          throw new Error('Ingen tilladelse');
         } else if (insertError.message.includes('overlap') || insertError.message.includes('conflict')) {
-          throw new Error('Lokalet er desværre allerede booket i det valgte tidsrum. Prøv et andet tidspunkt.');
+          throw new Error('Lokalet er allerede booket');
         } else {
-          throw new Error(`Der opstod en fejl ved oprettelse af booking: ${insertError.message}. Prøv venligst igen.`);
+          throw new Error(`Fejl: ${insertError.message}`);
         }
       }
 
@@ -187,9 +182,9 @@ export function BookingModal({ opened, onClose, onBookingSuccess }: BookingModal
     } catch (err: unknown) {
       const errorMessage = err instanceof Error 
         ? (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')
-          ? 'Kunne ikke oprette forbindelse til serveren. Tjek din internetforbindelse og prøv igen.'
+          ? 'Ingen internetforbindelse'
           : err.message)
-        : 'Der opstod en uventet fejl ved oprettelse af booking. Prøv venligst igen.';
+        : 'Uventet fejl';
       setError(errorMessage);
     } finally {
       setSubmitting(false);

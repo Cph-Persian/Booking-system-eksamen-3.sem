@@ -27,6 +27,13 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // ========================================
+  // ROOT LAYOUT - Wrapper for hele applikationen
+  // ========================================
+  // Struktur:
+  // 1. MantineProvider - Giver Mantine UI komponenter til hele appen
+  // 2. UserProvider - Giver brugercontext til hele appen
+  // 3. ProtectedLayout - Beskytter routes og viser navbar
   return (
     <html lang="da">
       <body

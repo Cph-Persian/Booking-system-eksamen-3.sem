@@ -1,5 +1,3 @@
-// Delte hjælpefunktioner til booking
-
 export function timeStringToDate(timeStr: string, baseDate: Date): Date | null {
   if (!timeStr) return null;
   const [hours, minutes] = timeStr.split(':').map(Number);

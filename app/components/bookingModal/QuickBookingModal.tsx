@@ -1,3 +1,10 @@
+/**
+ * QuickBookingModal - Hurtig booking modal til at booke et lokale for i dag
+ * 
+ * Tillader brugeren at booke et lokale hurtigt ved at vælge start- og sluttid.
+ * Validerer booking (halve timer, maks 2 timer, ingen overlap) og opretter booking i Supabase.
+ * Henter eksisterende bookinger for i dag for at tjekke for konflikter.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -41,13 +48,19 @@ export function QuickBookingModal({
   roomFeatures,
   onBookingSuccess 
 }: QuickBookingModalProps) {
-  const [startTime, setStartTime] = useState<string>('');
-  const [endTime, setEndTime] = useState<string>('');
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  // ========================================
+  // 1. STATE MANAGEMENT
+  // ========================================
+  const [startTime, setStartTime] = useState<string>(''); // Start tidspunkt
+  const [endTime, setEndTime] = useState<string>(''); // Slut tidspunkt
+  const [bookings, setBookings] = useState<Booking[]>([]); // Eksisterende bookinger for i dag
+  const [submitting, setSubmitting] = useState(false); // Loading state ved submit
+  const [error, setError] = useState<string | null>(null); // Fejlbesked
+  const [success, setSuccess] = useState(false); // Success besked
 
+  // ========================================
+  // 2. FETCH EXISTING BOOKINGS - Henter eksisterende bookinger for i dag
+  // ========================================
   useEffect(() => {
     if (!opened || !supabase) {
       setBookings([]);
@@ -64,34 +77,44 @@ export function QuickBookingModal({
       .then(({ data }) => data && setBookings(data as Booking[]));
   }, [opened, roomId]);
 
+  // ========================================
+  // 3. VALIDATION - Validerer booking input
+  // ========================================
+  // Tjekker:
+  // - Start og slut tid er valgt
+  // - Slut tid er efter start tid
+  // - Kun halve eller hele timer (00 eller 30 minutter)
+  // - Maksimal varighed er 2 timer
+  // - Kan ikke booke i fortiden
+  // - Ingen overlap med eksisterende bookinger
   const validateBooking = (): string | null => {
-    if (!startTime || !endTime) return 'Vælg venligst både en start- og sluttid for din booking.';
+    if (!startTime || !endTime) return 'Vælg både start- og sluttid';
     const today = new Date();
     const startDateTime = timeStringToDate(startTime, today);
     const endDateTime = timeStringToDate(endTime, today);
-    if (!startDateTime || !endDateTime) return 'Den valgte tid er ikke gyldig. Prøv venligst igen.';
-    if (endDateTime <= startDateTime) return 'Sluttiden skal være efter starttiden. Juster venligst tiderne.';
-    
+    if (!startDateTime || !endDateTime) return 'Ugyldig tid';
+    if (endDateTime <= startDateTime) return 'Sluttid skal være efter starttid';
     const [, startMinutes] = startTime.split(':').map(Number);
     const [, endMinutes] = endTime.split(':').map(Number);
     if ((startMinutes !== 0 && startMinutes !== 30) || (endMinutes !== 0 && endMinutes !== 30)) {
-      return 'Bookinger skal starte og slutte på hele eller halve timer (f.eks. 09:00, 09:30, 10:00).';
+      return 'Kun halve eller hele timer';
     }
-    
     const durationMinutes = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60);
-    if (durationMinutes > 120) return 'Du kan maksimalt booke et lokale i 2 timer. Juster venligst varigheden.';
-    if (startDateTime < new Date()) return 'Du kan ikke booke et lokale i fortiden. Vælg venligst et fremtidigt tidspunkt.';
-    
-    const hasOverlap = bookings.some(booking => {
-      const bs = new Date(booking.start_time);
-      const be = new Date(booking.end_time);
+    if (durationMinutes > 120) return 'Maksimal varighed er 2 timer';
+    if (startDateTime < new Date()) return 'Kan ikke booke i fortiden';
+    const hasOverlap = bookings.some(b => {
+      const bs = new Date(b.start_time);
+      const be = new Date(b.end_time);
       return (startDateTime >= bs && startDateTime < be) ||
              (endDateTime > bs && endDateTime <= be) ||
              (startDateTime <= bs && endDateTime >= be);
     });
-    return hasOverlap ? 'Lokalet er desværre allerede booket i det valgte tidsrum. Prøv et andet tidspunkt.' : null;
+    return hasOverlap ? 'Lokalet er allerede booket' : null;
   };
 
+  // ========================================
+  // 4. SUBMIT HANDLER - Opretter booking i Supabase
+  // ========================================
   const handleSubmit = async () => {
     setError(null);
     setSuccess(false);
@@ -107,10 +130,11 @@ export function QuickBookingModal({
       const startDateTime = timeStringToDate(startTime, today);
       const endDateTime = timeStringToDate(endTime, today);
       if (!startDateTime || !endDateTime) {
-        setError('Den valgte tid er ikke gyldig. Prøv venligst igen.');
+        setError('Ugyldig tid');
         setSubmitting(false);
         return;
       }
+      // Henter bruger ID fra Supabase auth
       const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase.from('bookings').insert({
         room_id: roomId,
@@ -120,21 +144,27 @@ export function QuickBookingModal({
       });
       if (error) throw error;
       setSuccess(true);
+      // Lukker modal automatisk efter 1.5 sekunder
       setTimeout(() => {
         setStartTime('');
         setEndTime('');
         setError(null);
         setSuccess(false);
-        onBookingSuccess?.();
+        onBookingSuccess?.(); // Opdaterer bookings i parent komponent
         onClose();
       }, 1500);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Der opstod en uventet fejl ved oprettelse af booking. Prøv venligst igen.');
+      setError(err instanceof Error ? err.message : 'Uventet fejl');
     } finally {
       setSubmitting(false);
     }
   };
 
+  // ========================================
+  // 5. EVENT HANDLERS - Håndterer brugerinteraktioner
+  // ========================================
+  
+  // Rydder state og lukker modal
   const handleClose = () => {
     setStartTime('');
     setEndTime('');
@@ -143,19 +173,27 @@ export function QuickBookingModal({
     onClose();
   };
 
+  // Normaliserer tid ved blur (fx "9:5" -> "09:30")
   const handleStartTimeBlur = () => {
     if (startTime) setStartTime(normalizeTime(startTime));
   };
 
+  // Opdaterer start tid og rydder slut tid hvis start tid fjernes
   const handleStartTimeChange = (value: string) => {
     setStartTime(value);
-    if (!value) setEndTime('');
+    if (!value) setEndTime(''); // Ryd slut tid hvis start tid fjernes
   };
 
+  // ========================================
+  // 6. FEATURES PARSING - Parser udstyr string til liste
+  // ========================================
   const featuresList = roomFeatures 
     ? roomFeatures.split(',').map(f => f.trim()).filter(Boolean)
     : [];
 
+  // ========================================
+  // 7. UI RENDERING - Booking modal
+  // ========================================
   return (
     <Modal
       opened={opened}
@@ -164,12 +202,14 @@ export function QuickBookingModal({
       size="md"
     >
       <Stack gap="md">
+        {/* Success besked - Vises efter succesfuld booking */}
         {success && (
           <Alert icon={<IconCheck size={16} />} title="Booking oprettet!" color="green">
             Dit lokale er nu booket for i dag.
           </Alert>
         )}
 
+        {/* Fejlbesked - Vises hvis validering eller booking fejler */}
         {error && (
           <Alert icon={<IconAlertCircle size={16} />} title="Fejl" color="red">
             {error}

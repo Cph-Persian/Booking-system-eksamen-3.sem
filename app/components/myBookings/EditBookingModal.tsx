@@ -1,7 +1,12 @@
-// components/myBookings/EditBookingModal.tsx
+/**
+ * EditBookingModal - Modal til redigering af booking tider
+ * 
+ * Tillader brugeren at ændre start- og sluttidspunkt for en eksisterende booking.
+ * Validerer input (halve timer, maks 2 timer varighed) og viser fejl/success beskeder.
+ * Normaliserer automatisk tider til halve timer (00 eller 30 minutter).
+ */
 'use client';
 
-// Modal til at redigere tiderne på en booking
 import { useState, useEffect } from 'react';
 import { Modal, Text, Button, Stack, Group, Alert } from '@mantine/core';
 import { TimeInput } from '@mantine/dates';
@@ -29,20 +34,27 @@ export function EditBookingModal({
   error = null,
   success = false
 }: EditBookingModalProps) {
-  const [startTime, setStartTime] = useState<string>('');
-  const [endTime, setEndTime] = useState<string>('');
-  const [localError, setLocalError] = useState<string | null>(null);
+  // ========================================
+  // 1. STATE MANAGEMENT
+  // ========================================
+  const [startTime, setStartTime] = useState<string>(''); // Start tidspunkt
+  const [endTime, setEndTime] = useState<string>(''); // Slut tidspunkt
+  const [localError, setLocalError] = useState<string | null>(null); // Lokal fejlbesked
 
-  // Parse tider fra booking når den ændres
+  // ========================================
+  // 2. INITIALIZE TIMES - Sætter tider fra booking når modal åbnes
+  // ========================================
   useEffect(() => {
     if (booking?.tid) {
-      const [start, end] = booking.tid.split('-');
+      const [start, end] = booking.tid.split('-'); // Split tid string (fx "13:00-15:00")
       setStartTime(start.trim());
       setEndTime(end.trim());
     }
   }, [booking]);
 
-  // Nulstil når modal lukkes
+  // ========================================
+  // 3. RESET ON CLOSE - Rydder state når modal lukkes
+  // ========================================
   useEffect(() => {
     if (!opened) {
       setStartTime('');
@@ -51,63 +63,59 @@ export function EditBookingModal({
     }
   }, [opened]);
 
-  if (!booking) return null;
+  if (!booking) return null; // Vis ikke modal hvis ingen booking valgt
 
-  // Normaliserer tid til halve timer (00 eller 30)
+  // ========================================
+  // 4. TIME NORMALIZATION - Normaliserer tid til halve timer
+  // ========================================
+  // Konverterer fx "9:5" til "09:30" eller "9:45" til "09:30"
   const normalizeTime = (timeStr: string): string => {
     if (!timeStr) return '';
     const [rawHours, rawMinutes = '0'] = timeStr.split(':');
     const hoursNum = parseInt(rawHours, 10) || 0;
     const minutesNum = parseInt(rawMinutes, 10) || 0;
-    const normalizedMinutes = minutesNum < 30 ? 0 : 30;
+    const normalizedMinutes = minutesNum < 30 ? 0 : 30; // Rund op/ned til 0 eller 30
     return `${hoursNum.toString().padStart(2, '0')}:${normalizedMinutes.toString().padStart(2, '0')}`;
   };
 
-  // Validerer booking
+  // ========================================
+  // 5. VALIDATION - Validerer booking input
+  // ========================================
+  // Tjekker:
+  // - Start og slut tid er valgt
+  // - Kun halve eller hele timer (00 eller 30 minutter)
+  // - Slut tid er efter start tid
+  // - Maksimal varighed er 2 timer
   const validateBooking = (): string | null => {
-    if (!startTime || !endTime) {
-      return 'Du skal vælge både start- og sluttid for at opdatere booking';
-    }
-
+    if (!startTime || !endTime) return 'Vælg både start- og sluttid';
     const [startHours, startMinutes] = startTime.split(':').map(Number);
     const [endHours, endMinutes] = endTime.split(':').map(Number);
-
-    // Tjek halve timer
-    if (startMinutes !== 0 && startMinutes !== 30) {
-      return 'Starttid skal være i halve timer. Vælg fx 09:00 eller 09:30';
-    }
-    if (endMinutes !== 0 && endMinutes !== 30) {
-      return 'Sluttid skal være i halve timer. Vælg fx 09:00 eller 09:30';
-    }
-
-    // Opret Date objekter for at beregne varighed
+    if (startMinutes !== 0 && startMinutes !== 30) return 'Starttid skal være i halve timer';
+    if (endMinutes !== 0 && endMinutes !== 30) return 'Sluttid skal være i halve timer';
     const startTotalMinutes = startHours * 60 + startMinutes;
     const endTotalMinutes = endHours * 60 + endMinutes;
-
-    if (endTotalMinutes <= startTotalMinutes) {
-      return 'Sluttid skal være senere end starttid';
-    }
-
-    const durationMinutes = endTotalMinutes - startTotalMinutes;
-    if (durationMinutes > 120) {
-      return 'Du kan maksimalt booke lokale i 2 timer ad gangen';
-    }
-
+    if (endTotalMinutes <= startTotalMinutes) return 'Sluttid skal være senere end starttid';
+    if (endTotalMinutes - startTotalMinutes > 120) return 'Maksimal varighed er 2 timer';
     return null;
   };
 
+  // ========================================
+  // 6. CONFIRM HANDLER - Bekræfter redigering
+  // ========================================
   const handleConfirm = () => {
     const validationError = validateBooking();
     if (validationError) {
-      setLocalError(validationError);
+      setLocalError(validationError); // Vis fejl hvis validering fejler
       return;
     }
 
     setLocalError(null);
-    onConfirm(booking.id, startTime, endTime);
+    onConfirm(booking.id, startTime, endTime); // Kalder parent handler med nye tider
   };
 
+  // Kombinerer fejl fra parent og lokal validering
   const displayError = error || localError;
+  // Tjekker om input er gyldigt før submit
   const isValid = startTime && endTime && !validateBooking();
 
   return (
@@ -126,12 +134,14 @@ export function EditBookingModal({
           Rediger booking
         </Text>
 
+        {/* Success besked - Vises efter succesfuld opdatering */}
         {success && (
           <Alert icon={<IconCheck size={16} />} title="Booking opdateret!" color="green">
             Tiderne er nu opdateret.
           </Alert>
         )}
 
+        {/* Fejlbesked - Vises hvis validering eller opdatering fejler */}
         {displayError && (
           <Alert icon={<IconAlertCircle size={16} />} title="Fejl" color="red">
             {displayError}
@@ -149,19 +159,8 @@ export function EditBookingModal({
             </Text>
             <TimeInput
               value={startTime}
-              onChange={(e) => {
-                const value = e.currentTarget.value;
-                if (value) {
-                  setStartTime(normalizeTime(value));
-                } else {
-                  setStartTime('');
-                }
-              }}
-              onBlur={() => {
-                if (startTime) {
-                  setStartTime(normalizeTime(startTime));
-                }
-              }}
+              onChange={(e) => setStartTime(e.currentTarget.value)}
+              onBlur={() => startTime && setStartTime(normalizeTime(startTime))}
               leftSection={<IconClock size={16} />}
               placeholder="Vælg start tid"
             />
@@ -176,19 +175,8 @@ export function EditBookingModal({
             </Text>
             <TimeInput
               value={endTime}
-              onChange={(e) => {
-                const value = e.currentTarget.value;
-                if (value) {
-                  setEndTime(normalizeTime(value));
-                } else {
-                  setEndTime('');
-                }
-              }}
-              onBlur={() => {
-                if (endTime) {
-                  setEndTime(normalizeTime(endTime));
-                }
-              }}
+              onChange={(e) => setEndTime(e.currentTarget.value)}
+              onBlur={() => endTime && setEndTime(normalizeTime(endTime))}
               leftSection={<IconClock size={16} />}
               placeholder="Vælg slut tid"
             />
