@@ -8,7 +8,7 @@
  */
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Container, Paper, Text, Stack, Loader, Center } from '@mantine/core';
 import '@mantine/dates/styles.css';
 
@@ -20,233 +20,99 @@ import { BookingsHeader } from '../components/myBookings/BookingsHeader';
 import { BookingsFilter } from '../components/myBookings/BookingsFilter';
 import { BookingsTableHeader } from '../components/myBookings/BookingsTableHeader';
 import { BookingsEmptyState } from '../components/myBookings/BookingsEmptyState';
-import { Booking } from '../components/myBookings/types';
-import { matchesDate, matchesSearch, convertSupabaseBookingToBooking, parseBookingDate } from '../components/myBookings/utils';
-import { supabase } from '../lib/supabaseClient';
-import louiseAvatar from '../img/louise.png';
+import { matchesDate, matchesSearch } from '../components/myBookings/utils';
+import { useBookings } from '../hooks/useBookings';
+import { useBookingModals } from '../hooks/useBookingModals';
+import { useBookingActions } from '../hooks/useBookingActions';
+import { getAvatarSrc } from '../utils/avatarUtils';
 
 export default function BookingPage() {
   // ========================================
-  // 1. STATE MANAGEMENT
+  // 1. HOOKS - Henter data og håndterer state
   // ========================================
-  const { user, loading } = useUser(); // Henter brugerdata
-  const [allBookings, setAllBookings] = useState<Booking[]>([]); // Alle bookinger
-  const [searchValue, setSearchValue] = useState(''); // Søgetekst
-  const [dateValue, setDateValue] = useState<Date | null>(null); // Valgt dato
-  const [bookingsLoading, setBookingsLoading] = useState(true); // Loading state
-  const [bookingsError, setBookingsError] = useState<string | null>(null); // Fejlbesked
-  const [cancelModalOpened, setCancelModalOpened] = useState(false); // Cancel modal åben/lukket
-  const [editModalOpened, setEditModalOpened] = useState(false); // Edit modal åben/lukket
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null); // Valgt booking
-  const [isMounted, setIsMounted] = useState(false); // Forhindrer hydration fejl
-  const [cancelLoading, setCancelLoading] = useState(false); // Loading ved aflysning
-  const [editLoading, setEditLoading] = useState(false); // Loading ved redigering
-  const [editSuccess, setEditSuccess] = useState(false); // Success besked
+  const { user, loading: userLoading } = useUser();
+  const { bookings: allBookings, loading: bookingsLoading, error: bookingsError, refetch } = useBookings(user?.id);
+  const { cancelModal, editModal, selectedBooking } = useBookingModals();
+  const { handleCancel, handleEdit, cancelLoading, editLoading, editSuccess, error: actionError, resetEditSuccess } = useBookingActions({
+    bookings: allBookings,
+    onUpdate: refetch,
+    onError: () => {}, // Error håndteres i hook og returneres
+  });
 
   // ========================================
-  // 2. MOUNT EFFECT
+  // 2. LOCAL STATE - Filter og mount state
+  // ========================================
+  const [searchValue, setSearchValue] = useState(''); // Søgetekst
+  const [dateValue, setDateValue] = useState<Date | null>(null); // Valgt dato
+  const [isMounted, setIsMounted] = useState(false); // Forhindrer hydration fejl
+
+  // ========================================
+  // 3. MOUNT EFFECT - Marker komponent som mounted
   // ========================================
   useEffect(() => {
-    setIsMounted(true); // Marker komponent som mounted
+    setIsMounted(true);
   }, []);
 
   // ========================================
-  // 3. DATA FETCHING (fetchBookings)
+  // 3.5. EDIT SUCCESS EFFECT - Lukker edit modal efter success
   // ========================================
-  // Henter bookinger fra Supabase
-  const fetchBookings = useCallback(async () => {
-    if (!supabase || !user?.id) {
-      setBookingsLoading(false);
-      return;
-    }
-    setBookingsLoading(true);
-    setBookingsError(null);
-    try {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('id, room_id, start_time, end_time, user_id, rooms (id, name, type, features)')
-        .eq('user_id', user.id) // Kun denne brugers bookinger
-        .order('start_time', { ascending: true }); // Sorter efter start tid
-      
-      if (error) throw error;
-      
-      if (data) {
-        const now = new Date();
-        const convertedBookings = data
-          .filter((b: any) => new Date(b.end_time) >= now) // Kun kommende bookinger
-          .map(convertSupabaseBookingToBooking); // Konverter format
-        setAllBookings(convertedBookings);
-      }
-    } catch (err: unknown) {
-      setBookingsError(err instanceof Error ? err.message : 'Kunne ikke hente bookinger');
-      setAllBookings([]);
-    } finally {
-      setBookingsLoading(false);
-    }
-  }, [user?.id]);
-
-  // ========================================
-  // 4. FETCH EFFECT - Henter bookinger når bruger er klar
-  // ========================================
-  // Henter bookinger når bruger er klar
   useEffect(() => {
-    if (!loading && user?.id) {
-      fetchBookings(); // Hent bookinger hvis bruger er logget ind
-    } else if (!loading && !user) {
-      setAllBookings([]); // Ryd bookinger hvis ikke logget ind
-      setBookingsLoading(false);
+    if (editSuccess) {
+      const timer = setTimeout(() => {
+        editModal.close();
+      }, 1500);
+      return () => clearTimeout(timer);
     }
-  }, [user?.id, loading, fetchBookings]);
+  }, [editSuccess, editModal.close]);
 
   // ========================================
-  // 5. REAL-TIME UPDATES - Supabase Realtime Subscription
+  // 3.6. RESET SUCCESS/ERROR STATE - Rydder state når modal lukkes
   // ========================================
-  // Real-time subscription - opdaterer automatisk ved ændringer
   useEffect(() => {
-    if (!supabase || !user?.id) return;
-    const channel = supabase
-      .channel('bookings-changes')
-      .on('postgres_changes', { 
-        event: '*', // Lytter til alle events
-        schema: 'public', 
-        table: 'bookings', 
-        filter: `user_id=eq.${user.id}` // Kun denne brugers bookinger
-      }, fetchBookings) // Opdater ved ændring
-      .subscribe();
-    
-    return () => {
-      if (supabase) {
-        supabase.removeChannel(channel); // Ryd op ved unmount
-      }
-    };
-  }, [user?.id, fetchBookings]);
+    if (!editModal.opened) {
+      resetEditSuccess(); // Reset success/error state når modal lukkes
+    }
+  }, [editModal.opened, resetEditSuccess]);
 
   // ========================================
-  // 6. FILTERING - Filtrerer bookinger baseret på søgning og dato
+  // 4. FILTERING - Filtrerer bookinger baseret på søgning og dato
   // ========================================
-  // Filtrer bookinger baseret på søgning og dato
   const filteredBookings = allBookings.filter(b => 
     matchesSearch(b, searchValue) && matchesDate(b, dateValue)
   );
 
   // ========================================
-  // 7. EVENT HANDLERS - Håndterer brugerinteraktioner
+  // 5. EVENT HANDLERS - Åbner modaler
   // ========================================
-  
-  // Åbner cancel modal
-  const handleCancelBooking = useCallback((bookingId: string) => {
+  const handleCancelBooking = (bookingId: string) => {
     const booking = allBookings.find(b => b.id === bookingId);
-    if (booking) {
-      setSelectedBooking(booking); // Gem valgt booking
-      setCancelModalOpened(true); // Åbn modal
-    }
-  }, [allBookings]);
+    if (booking) cancelModal.open(booking);
+  };
 
-  // Åbner edit modal
-  const handleEditBooking = useCallback((bookingId: string) => {
+  const handleEditBooking = (bookingId: string) => {
     const booking = allBookings.find(b => b.id === bookingId);
-    if (booking) {
-      setSelectedBooking(booking); // Gem valgt booking
-      setEditModalOpened(true); // Åbn modal
-    }
-  }, [allBookings]);
+    if (booking) editModal.open(booking);
+  };
 
   // ========================================
-  // 8. CANCEL BOOKING - Sletter booking fra databasen
+  // 6. CONFIRM HANDLERS - Bekræfter actions
   // ========================================
-  // Sletter booking fra databasen
   const handleConfirmCancel = async () => {
-    if (!selectedBooking || !supabase) return;
-    setCancelLoading(true);
-    try {
-      const { error } = await supabase
-        .from('bookings')
-        .delete() // Slet booking
-        .eq('id', selectedBooking.id);
-      
-      if (error) throw error;
-      
-      setAllBookings(prev => prev.filter(b => b.id !== selectedBooking.id)); // Fjern fra state
-      setCancelModalOpened(false); // Luk modal
-      setSelectedBooking(null);
-    } catch (err: unknown) {
-      setBookingsError(err instanceof Error ? err.message : 'Kunne ikke aflyse booking');
-    } finally {
-      setCancelLoading(false);
+    if (selectedBooking) {
+      const success = await handleCancel(selectedBooking);
+      if (success) cancelModal.close();
     }
   };
 
-  // ========================================
-  // 9. EDIT BOOKING - Opdaterer booking tidspunkt i databasen
-  // ========================================
-  // Opdaterer booking tidspunkt
   const handleConfirmEdit = async (bookingId: string, newStartTime: string, newEndTime: string) => {
-    if (!selectedBooking || !supabase) return;
-    setEditLoading(true);
-    setEditSuccess(false);
-    setBookingsError(null);
-    try {
-      const originalBooking = allBookings.find(b => b.id === bookingId);
-      if (!originalBooking) throw new Error('Booking ikke fundet');
-      
-      const parsedDate = parseBookingDate(originalBooking.dato); // Parse dato
-      if (!parsedDate) throw new Error('Ugyldig dato');
-      
-      const [startHours, startMinutes] = newStartTime.split(':').map(Number); // Split tid
-      const [endHours, endMinutes] = newEndTime.split(':').map(Number);
-      
-      // Kombiner dato + tid til Date objekter
-      const newStartDateTime = new Date(
-        parsedDate.year, 
-        parsedDate.monthIndex, 
-        parsedDate.day, 
-        startHours, 
-        startMinutes
-      );
-      const newEndDateTime = new Date(
-        parsedDate.year, 
-        parsedDate.monthIndex, 
-        parsedDate.day, 
-        endHours, 
-        endMinutes
-      );
-      
-      // Opdater i Supabase
-      const { error } = await supabase
-        .from('bookings')
-        .update({ 
-          start_time: newStartDateTime.toISOString(), 
-          end_time: newEndDateTime.toISOString() 
-        })
-        .eq('id', bookingId);
-      
-      if (error) throw error;
-      
-      // Opdater lokal state
-      setAllBookings(prev => prev.map(b => 
-        b.id === bookingId 
-          ? { ...b, tid: `${newStartTime}-${newEndTime}` } 
-          : b
-      ));
-      
-      setEditSuccess(true);
-      setTimeout(() => {
-        setEditModalOpened(false); // Luk modal efter 1.5 sek
-        setSelectedBooking(null);
-        setEditSuccess(false);
-      }, 1500);
-    } catch (err: unknown) {
-      setBookingsError(err instanceof Error ? err.message : 'Kunne ikke opdatere booking');
-    } finally {
-      setEditLoading(false);
-    }
+    await handleEdit(bookingId, newStartTime, newEndTime);
+    // Modal lukkes automatisk i hook efter success
   };
 
   // ========================================
-  // 10. LOADING STATE - Viser loader mens data hentes
+  // 7. LOADING STATE - Viser loader mens data hentes
   // ========================================
-  // Vis loader mens data hentes
-  if (loading || bookingsLoading) {
+  if (userLoading || bookingsLoading) {
     return (
       <Container size="xl" py="xl">
         <Center><Loader size="lg" /></Center>
@@ -255,9 +121,10 @@ export default function BookingPage() {
   }
 
   // ========================================
-  // 11. ERROR STATE - Viser fejlbesked hvis noget går galt
+  // 8. ERROR STATE - Viser fejlbesked hvis noget går galt
   // ========================================
-  // Vis fejlbesked hvis noget går galt
+  // Kun bookingsError vises på siden (kritisk fejl ved datahentning)
+  // actionError vises kun i EditBookingModal (fejl ved edit operation)
   if (bookingsError) {
     return (
       <Container size="xl" py="xl">
@@ -269,15 +136,7 @@ export default function BookingPage() {
   }
 
   // ========================================
-  // 12. AVATAR LOGIK - Bestemmer hvilket avatar der skal vises
-  // ========================================
-  // Bestem avatar baseret på bruger navn
-  const headerAvatarSrc = user?.name?.toLowerCase().includes('louise') 
-    ? louiseAvatar.src 
-    : user?.avatarUrl || '/img/frederik.png';
-
-  // ========================================
-  // 13. UI RENDERING - Hovedkomponenten der vises
+  // 9. UI RENDERING - Hovedkomponenten der vises
   // ========================================
   return (
     <Container size="xl" py="xl">
@@ -285,7 +144,7 @@ export default function BookingPage() {
       <BookingsHeader 
         user={user} 
         totalBookings={allBookings.length} 
-        avatarSrc={headerAvatarSrc} 
+        avatarSrc={getAvatarSrc(user)} 
       />
 
       {/* Søge- og datofilter */}
@@ -321,28 +180,21 @@ export default function BookingPage() {
 
       {/* Cancel modal */}
       <CancelBookingModal 
-        opened={cancelModalOpened} 
-        onClose={() => { 
-          setCancelModalOpened(false); 
-          setSelectedBooking(null); 
-        }}
+        opened={cancelModal.opened} 
+        onClose={cancelModal.close}
         booking={selectedBooking}
-        onConfirm={handleConfirmCancel} // Sletter booking
+        onConfirm={handleConfirmCancel}
         loading={cancelLoading}
       />
       
       {/* Edit modal */}
       <EditBookingModal
-        opened={editModalOpened}
-        onClose={() => { 
-          setEditModalOpened(false); 
-          setSelectedBooking(null); 
-          setEditSuccess(false); 
-        }}
+        opened={editModal.opened}
+        onClose={editModal.close}
         booking={selectedBooking}
-        onConfirm={handleConfirmEdit} // Opdaterer booking
+        onConfirm={handleConfirmEdit}
         loading={editLoading}
-        error={bookingsError}
+        error={actionError}
         success={editSuccess}
       />
     </Container>
